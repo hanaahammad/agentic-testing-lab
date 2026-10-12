@@ -1,4 +1,4 @@
-# The QA agent's full cycle in CI: design -> write scripts -> run -> triage -> repair -> GitHub Issues.
+# The QA agent's full cycle in CI: discover -> design -> write scripts -> run -> triage -> repair -> GitHub Issues.
 # Trigger it by hand (Actions tab > QA agent cycle > Run workflow) or on the weekday schedule.
 # Without an ANTHROPIC_API_KEY secret it runs in demo mode, so you can try it for free.
 name: QA agent cycle
@@ -6,8 +6,13 @@ name: QA agent cycle
 on:
   workflow_dispatch:
     inputs:
+      app:
+        description: "Application under test"
+        type: choice
+        options: [nilebank, minibank]
+        default: nilebank
       story:
-        description: "Story id (e.g. STORY-003) or ALL"
+        description: "Story id (e.g. STORY-104) or ALL"
         default: "ALL"
   schedule:
     - cron: "0 5 * * 1-5"   # 08:00 Cairo time, Monday to Friday
@@ -21,8 +26,9 @@ jobs:
   agent:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: http://127.0.0.1:8000
+      APP: ${{ inputs.app || 'nilebank' }}
       MINIBANK_FIXED: ${{ vars.MINIBANK_FIXED || '0' }}
+      NILEBANK_FIXED: ${{ vars.NILEBANK_FIXED || '0' }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL || 'claude-sonnet-5-5' }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,34 +39,40 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Install the browser for UI tests
+        run: python -m playwright install --with-deps chromium
 
-      - name: Start MiniBank (application under test)
-        run: |
-          nohup python -m uvicorn app_under_test.minibank:app --host 127.0.0.1 --port 8000 > app.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf $BASE_URL/health && break; sleep 1; done
-
-      - name: Run the QA agent
+      - name: Run the QA agent (it starts the app itself)
         run: |
           MODE=""
           if [ -z "$ANTHROPIC_API_KEY" ]; then MODE="--demo"; echo "No API key secret: running in demo mode"; fi
-          python -m agent.cli cycle --story "${{ inputs.story || 'ALL' }}" --tracker github $MODE
+          FIXED=""
+          if [ "$APP" = "nilebank" ] && [ "$NILEBANK_FIXED" = "1" ]; then FIXED="--fixed"; fi
+          if [ "$APP" = "minibank" ] && [ "$MINIBANK_FIXED" = "1" ]; then FIXED="--fixed"; fi
+          python -m agent.cli cycle --app "$APP" --story "${{ inputs.story || 'ALL' }}" --start-app $FIXED --tracker github $MODE
 
-      - name: Upload reports
+      - name: Build the dashboard
+        if: always()
+        run: python -m agent.dashboard --app "$APP" || true
+
+      - name: Upload reports and dashboard
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: agent-reports
-          path: reports/
+          name: agent-reports-${{ env.APP }}
+          path: |
+            reports/
+            dashboard/
 
       # Human gate: new or repaired test scripts arrive as a pull request for review.
       - name: Propose updated tests as a pull request
         uses: peter-evans/create-pull-request@v6
         with:
-          branch: agent/generated-tests
-          add-paths: tests/generated/*.py
-          commit-message: "QA agent: update generated tests"
-          title: "QA agent: updated generated tests"
+          branch: agent/generated-tests-${{ env.APP }}
+          add-paths: tests/*/generated/*.py
+          commit-message: "QA agent: update generated ${{ env.APP }} tests"
+          title: "QA agent: updated generated ${{ env.APP }} tests"
           body: |
-            The QA agent wrote or repaired these test scripts during its scheduled cycle.
+            The QA agent wrote or repaired these test scripts during its cycle.
             Review them like any other code: once merged, the Regression tests workflow runs them on every push.
           labels: agent-generated

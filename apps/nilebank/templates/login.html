@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block body %}
+<div class="login-shell">
+  <div class="card login-card">
+    <h1>Sign in</h1>
+    <p class="lead">Welcome to NileBank Online.</p>
+    {% if request.query_params.get('signed_out') %}
+      <div class="alert ok" data-testid="signed-out-message">You have signed out securely.</div>
+    {% endif %}
+    {% if error %}<div class="alert bad" role="alert" data-testid="login-error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login" data-testid="login-form">
+      <label for="username">Username</label>
+      <input id="username" name="username" value="{{ username or '' }}" autocomplete="username" data-testid="login-username">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" data-testid="login-password">
+      <button type="submit" data-testid="login-submit">Sign in</button>
+    </form>
+    <p class="hint" style="margin-top:16px">Test users: <code>amira</code> / <code>Nile@2026</code> · <code>omar</code> / <code>Pyramid#77</code></p>
+  </div>
+</div>
+{% endblock %}

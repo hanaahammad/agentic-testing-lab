@@ -1,62 +1,125 @@
-"""Exploratory testing: the agent drives the live app itself through an HTTP tool, step by step.
+"""Exploratory testing: the agent drives the live app itself, one action at a time.
 
-With Claude this is a real tool-use loop: Claude decides each request, reads the response, and
-records findings. In demo mode a scripted session plays the same role.
+API apps: the agent has an HTTP tool. Web apps: it also gets a real browser (Playwright) with tools to open
+pages, type, click, choose options and read the screen, and every browser step is captured as a screenshot.
+With Claude this is a real tool-use loop: Claude decides each action, reads the result and records findings.
+In demo mode a scripted session plays the same role.
 """
 import json
 
 import requests
 
-from . import demo_data
-from .target import compact_spec
+from . import demo_data, demo_nilebank
+from .config import TARGETS
+from .target import compact_spec, discover_ui, reset
 
-TOOLS = [
-    {
-        "name": "http_request",
-        "description": "Send one HTTP request to the application under test and get the status code and JSON body. "
-                       "Paths are relative, e.g. /accounts or /accounts/ACC-0001/deposit.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]},
-                "path": {"type": "string"},
-                "json_body": {"type": "object", "description": "JSON request body, if any"},
-            },
-            "required": ["method", "path"],
-        },
-    },
-    {
-        "name": "record_finding",
-        "description": "Record a behaviour that contradicts the user story. Include the exact request and response as evidence.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string"},
-                "criterion": {"type": "string", "description": "Which acceptance criterion, e.g. AC2"},
-                "severity": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
-                "evidence": {"type": "string"},
-            },
-            "required": ["title", "severity", "evidence"],
-        },
-    },
+HTTP_TOOL = {
+    "name": "http_request",
+    "description": "Send one HTTP request to the application under test and get the status code and JSON body. "
+                   "Paths are relative, e.g. /api/accounts. Pass headers such as Authorization when needed.",
+    "input_schema": {"type": "object", "properties": {
+        "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]},
+        "path": {"type": "string"},
+        "json_body": {"type": "object", "description": "JSON request body, if any"},
+        "headers": {"type": "object", "description": "Extra headers, e.g. {\"Authorization\": \"Bearer <token>\"}"},
+    }, "required": ["method", "path"]},
+}
+FINDING_TOOL = {
+    "name": "record_finding",
+    "description": "Record a behaviour that contradicts the user story. Include the exact steps and what you saw as evidence.",
+    "input_schema": {"type": "object", "properties": {
+        "title": {"type": "string"},
+        "criterion": {"type": "string", "description": "Which acceptance criterion, e.g. AC2"},
+        "severity": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
+        "evidence": {"type": "string"},
+    }, "required": ["title", "severity", "evidence"]},
+}
+BROWSER_TOOLS = [
+    {"name": "browser_open", "description": "Open a page of the web app in the browser, e.g. /login or /transfer.",
+     "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+    {"name": "browser_fill", "description": "Type text into the input with this data-testid (replaces its content).",
+     "input_schema": {"type": "object", "properties": {"test_id": {"type": "string"}, "text": {"type": "string"}},
+                      "required": ["test_id", "text"]}},
+    {"name": "browser_select", "description": "Choose an option (by value) in the select with this data-testid.",
+     "input_schema": {"type": "object", "properties": {"test_id": {"type": "string"}, "value": {"type": "string"}},
+                      "required": ["test_id", "value"]}},
+    {"name": "browser_click", "description": "Click the button or link with this data-testid and wait for the page.",
+     "input_schema": {"type": "object", "properties": {"test_id": {"type": "string"}}, "required": ["test_id"]}},
+    {"name": "browser_read", "description": "Read the current screen: URL, visible text and every element with a "
+                                            "data-testid and its text. Also returns the raw HTML of those elements.",
+     "input_schema": {"type": "object", "properties": {}}},
 ]
 
-SYSTEM = """You are an autonomous exploratory tester. You test a live REST API as a black box: you can
-ONLY interact with it through the http_request tool. Data was just reset.
+SYSTEM = """You are an autonomous exploratory tester. You test a live application as a black box: you can ONLY
+interact with it through your tools{browser_note}. Demo data was just reset.
 
-Goal: check every acceptance criterion of the story, then hunt for bugs around it (boundaries,
-negative and zero values, decimals and rounding, state left behind after a refused operation).
-Think out loud in one short sentence before each request. Whenever behaviour contradicts the
-story, call record_finding with the exact request and response as evidence.
-You have a budget of {budget} HTTP requests. Finish with a 3-5 line summary of what you covered
-and what you found."""
+Goal: check every acceptance criterion of the story, then hunt for bugs around it (boundaries, negative and zero
+values, decimals and rounding, state left behind after a refused operation, what the customer actually sees,
+security: sessions, other customers' data, HTML/script in text fields).
+Think out loud in one short sentence before each action. Whenever behaviour contradicts the story, call
+record_finding with the exact steps and what you saw as evidence.
+You have a budget of {budget} actions. Finish with a 3-5 line summary of what you covered and what you found."""
 
 
-def _http(base_url, method, path, body):
+class Browser:
+    """A real headless Chromium the agent can drive. Each action returns what is now on screen + a screenshot."""
+
+    def __init__(self, base_url: str):
+        import asyncio
+        import sys
+
+        from playwright.sync_api import sync_playwright
+
+        if sys.platform == "win32":
+            # Inside Streamlit on Windows the event-loop policy can be the "selector" one, which cannot start
+            # subprocesses; Playwright needs the Proactor loop to launch the browser. Affects new loops only.
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        self.base = base_url.rstrip("/")
+        self._pw = sync_playwright().start()
+        self._browser = self._pw.chromium.launch(headless=True)
+        self.page = self._browser.new_page(viewport={"width": 1180, "height": 760})
+        self.page.set_default_timeout(5000)
+
+    def close(self):
+        try:
+            self._browser.close()
+            self._pw.stop()
+        except Exception:
+            pass
+
+    def _state(self) -> dict:
+        p = self.page
+        items = p.evaluate("""() => [...document.querySelectorAll('[data-testid]')].slice(0, 60).map(e => ({
+            id: e.dataset.testid, text: (e.innerText || e.value || '').trim().slice(0, 120),
+            html: e.children.length ? e.innerHTML.trim().slice(0, 160) : ''}))""")
+        text = p.inner_text("body")[:1500]
+        return {"url": p.url.replace(self.base, ""), "title": p.title(), "elements": items, "text": text}
+
+    def shot(self) -> bytes:
+        return self.page.screenshot(type="jpeg", quality=70)
+
+    def act(self, tool: str, args: dict) -> dict:
+        p = self.page
+        try:
+            if tool == "browser_open":
+                p.goto(self.base + args["path"])
+            elif tool == "browser_fill":
+                p.get_by_test_id(args["test_id"]).fill(args["text"])
+            elif tool == "browser_select":
+                p.get_by_test_id(args["test_id"]).select_option(args["value"])
+            elif tool == "browser_click":
+                p.get_by_test_id(args["test_id"]).click()
+                p.wait_for_load_state()
+            return self._state()
+        except Exception as e:  # report the failure to the agent instead of crashing the session
+            return {"error": str(e).splitlines()[0][:300], **self._state()}
+
+
+def _http(base_url, method, path, body, headers=None):
     if not path.startswith("/"):
         return {"error": "path must start with /"}
     try:
-        r = requests.request(method, base_url.rstrip("/") + path, json=body, timeout=10)
+        r = requests.request(method, base_url.rstrip("/") + path, json=body, headers=headers or {}, timeout=10)
         try:
             payload = r.json()
         except ValueError:
@@ -71,22 +134,55 @@ def _req_event(method, path, body, out):
             "status": out.get("status"), "response": out.get("body"), "error": out.get("error")}
 
 
+def _describe_action(tool, args):
+    return {"browser_open": lambda: f"open {args.get('path')}",
+            "browser_fill": lambda: f"type {args.get('text')!r} into {args.get('test_id')}",
+            "browser_select": lambda: f"choose {args.get('value')!r} in {args.get('test_id')}",
+            "browser_click": lambda: f"click {args.get('test_id')}",
+            "browser_read": lambda: "read the screen"}[tool]()
+
+
+def _browser_event(tool, args, state, shot):
+    result = state.get("error") or f"now on {state.get('url')}"
+    return {"type": "browser", "action": _describe_action(tool, args), "result": result,
+            "url": state.get("url"), "screenshot": shot}
+
+
 def explore(llm, story: dict, spec: dict, base_url: str, budget: int = 15, emit=lambda e: None) -> dict:
-    requests.post(base_url.rstrip("/") + "/reset", timeout=10)
+    key = story.get("target", "minibank")
+    web = TARGETS[key]["kind"] == "web"
+    reset(base_url, key)
     events, findings = [], []
 
     def push(e):
         events.append(e)
         emit(e)
 
-    if llm.demo:
-        return _demo_explore(story, base_url, budget, push, findings, events)
+    browser = Browser(base_url) if web else None
+    try:
+        if llm.demo:
+            if key == "nilebank":
+                return _demo_scripted(story, base_url, budget, push, findings, events, browser)
+            return _demo_explore(story, base_url, budget, push, findings, events)
+        return _claude_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key)
+    finally:
+        if browser:
+            browser.close()
 
-    messages = [{"role": "user", "content": f"User story:\n{story['text']}\n\nAPI:\n{compact_spec(spec)}\n\nStart testing."}]
+
+def _claude_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key):
+    surface = f"API:\n{compact_spec(spec)}"
+    if browser:
+        surface += f"\n\nScreens (data-testids) discovered by crawling the app:\n{discover_ui(base_url, key)}"
+        user, pw = TARGETS[key].get("test_user", ("", ""))
+        surface += f"\n\nTest user: {user} / {pw}"
+    tools = [HTTP_TOOL] + (BROWSER_TOOLS if browser else []) + [FINDING_TOOL]
+    system = SYSTEM.format(budget=budget, browser_note=" (an HTTP client and a real web browser)" if browser else "")
+    messages = [{"role": "user", "content": f"User story:\n{story['text']}\n\n{surface}\n\nStart testing."}]
     used = 0
     for _ in range(budget * 2 + 4):
-        resp = llm.client.messages.create(model=llm.model, max_tokens=2000, system=SYSTEM.format(budget=budget),
-                                          tools=TOOLS, messages=messages)
+        resp = llm.client.messages.create(model=llm.model, max_tokens=2000, system=system, tools=tools,
+                                          messages=messages)
         messages.append({"role": "assistant", "content": resp.content})
         for b in resp.content:
             if b.type == "text" and b.text.strip():
@@ -97,19 +193,47 @@ def explore(llm, story: dict, spec: dict, base_url: str, budget: int = 15, emit=
         for b in resp.content:
             if b.type != "tool_use":
                 continue
-            if b.name == "http_request":
-                if used >= budget:
-                    out = {"error": "Request budget exhausted. Write your final summary now."}
-                else:
-                    used += 1
-                    out = _http(base_url, b.input["method"], b.input["path"], b.input.get("json_body"))
-                    push(_req_event(b.input["method"], b.input["path"], b.input.get("json_body"), out))
-            else:
+            if b.name == "record_finding":
                 findings.append(dict(b.input))
                 push({"type": "finding", **b.input})
                 out = {"recorded": True}
-            results.append({"type": "tool_result", "tool_use_id": b.id, "content": json.dumps(out)[:4000]})
+            elif used >= budget:
+                out = {"error": "Action budget exhausted. Write your final summary now."}
+            elif b.name == "http_request":
+                used += 1
+                out = _http(base_url, b.input["method"], b.input["path"], b.input.get("json_body"), b.input.get("headers"))
+                push(_req_event(b.input["method"], b.input["path"], b.input.get("json_body"), out))
+            else:
+                used += 1
+                out = browser.act(b.name, b.input) if b.name != "browser_read" else browser._state()
+                push(_browser_event(b.name, b.input, out, browser.shot()))
+            results.append({"type": "tool_result", "tool_use_id": b.id, "content": json.dumps(out)[:6000]})
         messages.append({"role": "user", "content": results})
+    return {"events": events, "findings": findings, "requests_used": used}
+
+
+def _demo_scripted(story, base_url, budget, push, findings, events, browser):
+    """Scripted exploratory session for web apps: a mix of browser steps and API calls."""
+    ctx, used = {"base": base_url}, 0
+    for thought, tool, args_fn, check in demo_nilebank.explore_plan(story["id"])[:budget]:
+        if thought:
+            push({"type": "thought", "text": thought})
+        args = args_fn(ctx) if callable(args_fn) else (args_fn or {})
+        used += 1
+        if tool == "http":
+            out = _http(base_url, args["method"], args["path"], args.get("json"), args.get("headers"))
+            push(_req_event(args["method"], args["path"], args.get("json"), out))
+        else:
+            out = browser.act(tool, args) if tool != "browser_read" else browser._state()
+            push(_browser_event(tool, args, out, browser.shot()))
+        verdict = check(out, ctx) if check else None
+        if verdict:
+            title, criterion, severity, evidence = verdict
+            f = {"title": title, "criterion": criterion, "severity": severity, "evidence": evidence}
+            findings.append(f)
+            push({"type": "finding", **f})
+    push({"type": "thought", "text": f"Took {used} actions to explore {story['id']}. "
+          + (f"Found {len(findings)} deviation(s) from the story." if findings else "Everything I tried matched the story.")})
     return {"events": events, "findings": findings, "requests_used": used}
 
 

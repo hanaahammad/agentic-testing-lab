@@ -4,7 +4,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+BASE_URL = (os.getenv("MINIBANK_URL") or os.getenv("BASE_URL") or "http://127.0.0.1:8000").rstrip("/")
 
 
 class Api:

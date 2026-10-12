@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Transaction history{% endblock %}
+{% block body %}
+<main class="wrap">
+  <h1>Transaction history</h1>
+  <p class="lead">Newest first, {{ 10 }} per page.</p>
+  {% if error %}<div class="alert bad" role="alert" data-testid="history-error">{{ error }}</div>{% endif %}
+  <div class="card">
+    <form method="get" action="/history" style="display:flex;gap:12px;align-items:flex-end">
+      <div style="flex:1"><label for="account">Account</label>
+        <select id="account" name="account" data-testid="history-account" onchange="this.form.submit()">
+          {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if h and h.account_id == a.id }}>{{ a.kind }} · {{ a.id }}</option>{% endfor %}
+        </select></div>
+    </form>
+    {% if h %}
+    <table data-testid="history-table">
+      <tr><th>Date</th><th>Description</th><th style="text-align:right">Amount</th></tr>
+      {% for t in h['items'] %}
+      <tr data-testid="txn-row" data-txn-id="{{ t.id }}">
+        <td data-testid="txn-date">{{ t.date }}</td>
+        <td data-testid="txn-description">{{ t.description }}</td>
+        <td class="amt {{ 'neg' if t.amount < 0 else 'pos' }}" data-testid="txn-amount">{{ (t.amount * 100) | round | int | egp }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="hint">No transactions yet.</td></tr>
+      {% endfor %}
+    </table>
+    <div class="pager">
+      {% if h.page > 1 %}<a class="btn light" href="/history?account={{ h.account_id }}&p={{ h.page - 1 }}" data-testid="history-prev">← Newer</a>{% else %}<span></span>{% endif %}
+      <span class="hint" data-testid="history-page">Page {{ h.page }} of {{ h.pages }} · {{ h.total }} transactions</span>
+      {% if h.page < h.pages %}<a class="btn light" href="/history?account={{ h.account_id }}&p={{ h.page + 1 }}" data-testid="history-next">Older →</a>{% else %}<span></span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

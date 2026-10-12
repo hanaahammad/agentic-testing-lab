@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Transfer money{% endblock %}
+{% block body %}
+<main class="wrap">
+  <h1>Transfer money</h1>
+  <p class="lead">Move money between your accounts or send it to a saved beneficiary.
+     Daily limit for beneficiary transfers: <b data-testid="daily-limit">{{ limit | egp }}</b>.</p>
+  {% if error %}<div class="alert bad" role="alert" data-testid="transfer-error">{{ error }}</div>{% endif %}
+  {% if result %}
+  <div class="alert ok" role="status" data-testid="transfer-success">
+    Transfer completed. Reference <b data-testid="transfer-reference">{{ result.reference }}</b> ·
+    amount <b data-testid="transfer-amount">{{ (result.amount * 100) | round | int | egp }}</b>
+  </div>
+  {% endif %}
+  <div class="card">
+    <form method="post" action="/transfer" data-testid="transfer-form">
+      <div class="row">
+        <div>
+          <label for="from_account">From account</label>
+          <select id="from_account" name="from_account" data-testid="transfer-from">
+            {% for a in accounts %}
+            <option value="{{ a.id }}" {{ 'selected' if form and form.from_account == a.id }}>{{ a.kind }} · {{ a.id }} · {{ a.balance | egp }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="destination">To</label>
+          <select id="destination" name="destination" data-testid="transfer-to">
+            <optgroup label="My accounts">
+              {% for a in accounts %}<option value="acc:{{ a.id }}" {{ 'selected' if form and form.destination == 'acc:' ~ a.id }}>{{ a.kind }} · {{ a.id }}</option>{% endfor %}
+            </optgroup>
+            <optgroup label="Beneficiaries">
+              {% for b in beneficiaries %}<option value="ben:{{ b.id }}" {{ 'selected' if form and form.destination == 'ben:' ~ b.id }}>{{ b.nickname }} · {{ b.iban[-6:] }}</option>{% endfor %}
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="amount">Amount (EGP)</label>
+          <input id="amount" name="amount" inputmode="decimal" placeholder="0.00" value="{{ form.amount if form else '' }}" data-testid="transfer-amount-input">
+        </div>
+        <div>
+          <label for="note">Note (optional)</label>
+          <input id="note" name="note" maxlength="60" value="{{ form.note if form else '' }}" data-testid="transfer-note">
+        </div>
+      </div>
+      <button type="submit" data-testid="transfer-submit">Send money</button>
+    </form>
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}My accounts{% endblock %}
+{% block body %}
+<main class="wrap">
+  <h1 data-testid="dashboard-heading">Good day, {{ user.full_name.split(' ')[0] }}</h1>
+  <p class="lead">Here is an overview of your accounts.</p>
+  <div class="total" data-testid="total-card"><span>Total balance across all accounts</span>
+    <b data-testid="total-balance">{{ total | egp }}</b></div>
+  <div class="grid">
+    {% for a in accounts %}
+    <div class="acc" data-testid="account-card-{{ a.id }}">
+      <div class="kind">{{ a.kind }}</div>
+      <div class="bal" data-testid="account-balance-{{ a.id }}">{{ a.balance | egp }}</div>
+      <div class="num" data-testid="account-iban-{{ a.id }}">{{ a.iban }}</div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <a class="btn light" href="/history?account={{ a.id }}" data-testid="account-history-{{ a.id }}">History</a>
+        <a class="btn light" href="/transfer" data-testid="account-transfer-{{ a.id }}">Transfer</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

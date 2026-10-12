@@ -193,7 +193,13 @@ REPAIRED = {
 }
 
 TEST_BUG_MARKERS = ("KeyError", "NameError", "AttributeError", "TypeError", "SyntaxError",
-                    "ImportError", "fixture", "IndentationError")
+                    "ImportError", "fixture", "IndentationError",
+                    # Playwright: an action timed out waiting for an element (e.g. a data-testid that is not on the
+                    # page). Failed expect() assertions raise AssertionError instead, and count as product bugs.
+                    "TimeoutError")
+SEVERITY = {"TC-003-02": "critical", "TC-101-03": "high", "TC-102-03": "high", "TC-104-02": "critical",
+            "TC-104-04": "critical", "TC-105-02": "medium", "TC-105-04": "critical", "TC-106-02": "medium",
+            "TC-107-03": "critical"}
 
 
 def cases(story_id):
@@ -207,18 +213,22 @@ def heuristic_triage(failure: dict, case_list: list[dict]) -> dict:
     first_line = (failure.get("message") or "").splitlines()[0][:300] if failure.get("message") else ""
     if "ConnectionError" in text or "Max retries exceeded" in text:
         verdict, reason = "environment", "The app could not be reached; this is not a product defect."
+    elif "TimeoutError" in text:
+        verdict, reason = "test_bug", ("The test waited for a screen element that is not there: its data-testid "
+                                        "does not appear in the screen map discovered for this page, so the test "
+                                        "is pointing at the wrong button, not the app misbehaving.")
     elif any(k in text for k in TEST_BUG_MARKERS):
         verdict, reason = "test_bug", ("The failure is a Python error inside the test itself (it reads a field "
                                         "or name that does not exist), not an HTTP behaviour that contradicts the story.")
     else:
-        verdict, reason = "product_bug", ("The app answered, but its response contradicts the acceptance "
-                                           "criterion: the assertion on status code or balance failed.")
+        verdict, reason = "product_bug", ("The app answered, but what it returned or showed contradicts the "
+                                           "acceptance criterion: the assertion on the response, amount or screen failed.")
     return {
         "tc_id": failure.get("tc_id"),
         "test_name": failure.get("name"),
         "verdict": verdict,
         "confidence": 0.9 if verdict != "environment" else 0.7,
-        "severity": "critical" if failure.get("tc_id") == "TC-003-02" else "high",
+        "severity": SEVERITY.get(failure.get("tc_id"), "high"),
         "criterion": case.get("criterion", ""),
         "title": f"Story rule broken: {case.get('title', failure.get('name', 'test failure'))} ({case.get('criterion', '?')})",
         "steps": case.get("steps", []),
