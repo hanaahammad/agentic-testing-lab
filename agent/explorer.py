@@ -76,7 +76,9 @@ class Browser:
             asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         self.base = base_url.rstrip("/")
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=True)
+        from .target import launch_browser
+
+        self._browser = launch_browser(self._pw, headless=True)
         self.page = self._browser.new_page(viewport={"width": 1180, "height": 760})
         self.page.set_default_timeout(5000)
 

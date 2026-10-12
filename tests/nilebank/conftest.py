@@ -12,7 +12,7 @@ UI helpers (import them: from nilebank_helpers import sign_in, money)
 import pytest
 import requests
 
-from nilebank_helpers import BASE_URL, HEADLESS, TIMEOUT_MS, Bank, sign_in  # noqa: F401
+from nilebank_helpers import BASE_URL, HEADLESS, TIMEOUT_MS, Bank, launch_browser, sign_in  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -37,7 +37,7 @@ def _browser():
     from playwright.sync_api import sync_playwright
 
     pw = sync_playwright().start()
-    browser = pw.chromium.launch(headless=HEADLESS)
+    browser = launch_browser(pw, headless=HEADLESS)
     yield browser
     browser.close()
     pw.stop()

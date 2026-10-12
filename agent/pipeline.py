@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import demo_data, demo_nilebank
 from .config import REPORTS_DIR, ROOT, TARGETS, tests_dir
-from .target import compact_spec, discover_ui, fetch_openapi
+from .target import BROWSER_FIX, browser_ready, compact_spec, discover_ui, fetch_openapi
 
 QA_SYSTEM = (
     "You are a senior QA engineer doing BLACK-BOX testing. You only know the user story, the public API "
@@ -246,6 +246,11 @@ def full_cycle(llm, story: dict, base_url: str, tracker=None, approve=None, log=
     log(f"[{sid}] Discovering {TARGETS[key]['name']}: reading {base_url}/openapi.json"
         + (" and walking through the screens" if TARGETS[key]["kind"] == "web" else ""))
     ctx = discover(story, base_url)
+    if TARGETS[key]["kind"] == "web":
+        ok, msg = browser_ready()
+        if not ok:
+            log(f"[{sid}] ⚠️ The browser for UI tests is not available on this machine ({msg}). "
+                f"UI tests will be reported as environment problems, API tests still run. Fix: {BROWSER_FIX}")
 
     log(f"[{sid}] Designing test cases from the acceptance criteria")
     cases = design_tests(llm, story, ctx)

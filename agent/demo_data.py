@@ -192,6 +192,9 @@ REPAIRED = {
     "STORY-003": SCRIPTS["STORY-003"].replace('r.json()["transfer_id"]', 'r.json()["id"]'),
 }
 
+# Infrastructure problems: the app or the browser was not there. Checked before anything else.
+ENVIRONMENT_MARKERS = ("ConnectionError", "Max retries exceeded", "Executable doesn't exist", "playwright install",
+                       "BrowserType.launch", "Connection refused", "ERR_CONNECTION_REFUSED")
 TEST_BUG_MARKERS = ("KeyError", "NameError", "AttributeError", "TypeError", "SyntaxError",
                     "ImportError", "fixture", "IndentationError",
                     # Playwright: an action timed out waiting for an element (e.g. a data-testid that is not on the
@@ -211,8 +214,11 @@ def heuristic_triage(failure: dict, case_list: list[dict]) -> dict:
     text = f"{failure.get('message', '')}\n{failure.get('details', '')}"
     case = next((c for c in case_list if c["id"] == failure.get("tc_id")), {})
     first_line = (failure.get("message") or "").splitlines()[0][:300] if failure.get("message") else ""
-    if "ConnectionError" in text or "Max retries exceeded" in text:
-        verdict, reason = "environment", "The app could not be reached; this is not a product defect."
+    if any(k in text for k in ENVIRONMENT_MARKERS):
+        verdict, reason = "environment", ("The test could not run: " + (
+            "the browser for UI tests is not installed on this machine (run: python -m playwright install chromium)."
+            if "Executable doesn't exist" in text or "playwright install" in text else
+            "the app could not be reached.") + " This is not a product defect and not a mistake in the test.")
     elif "TimeoutError" in text:
         verdict, reason = "test_bug", ("The test waited for a screen element that is not there: its data-testid "
                                         "does not appear in the screen map discovered for this page, so the test "
@@ -230,7 +236,9 @@ def heuristic_triage(failure: dict, case_list: list[dict]) -> dict:
         "confidence": 0.9 if verdict != "environment" else 0.7,
         "severity": SEVERITY.get(failure.get("tc_id"), "high"),
         "criterion": case.get("criterion", ""),
-        "title": f"Story rule broken: {case.get('title', failure.get('name', 'test failure'))} ({case.get('criterion', '?')})",
+        "title": {"product_bug": "Story rule broken: ", "test_bug": "Test script needs fixing: ",
+                  "environment": "Could not run: "}[verdict]
+                 + f"{case.get('title', failure.get('name', 'test failure'))} ({case.get('criterion', '?')})",
         "steps": case.get("steps", []),
         "expected": case.get("expected", ""),
         "actual": first_line,

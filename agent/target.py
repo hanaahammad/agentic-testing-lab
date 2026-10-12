@@ -190,3 +190,56 @@ def discover_ui(base_url: str, key: str, max_pages: int = 12) -> str:
     out.append("PAGE /logout\n  - (link data-testid=logout-link) signs out and redirects to /login?signed_out=1")
     reset(base_url, key)
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------- browser (web apps)
+BROWSER_CHOICES = ["chromium", "msedge", "chrome"]  # Playwright's own Chromium, then installed Edge / Chrome
+BROWSER_NAMES = {"chromium": "Playwright Chromium", "msedge": "Microsoft Edge", "chrome": "Google Chrome"}
+
+
+def launch_browser(pw, headless=True):
+    """Playwright's Chromium if installed, else the Edge or Chrome already on the machine (no download needed)."""
+    forced = os.getenv("PLAYWRIGHT_CHANNEL", "").strip()
+    errors = []
+    for channel in ([forced] if forced else BROWSER_CHOICES):
+        try:
+            return pw.chromium.launch(headless=headless, **({} if channel == "chromium" else {"channel": channel}))
+        except Exception as e:
+            errors.append(f"{channel}: {str(e).splitlines()[0][:160]}")
+    raise RuntimeError("No browser for UI tests. Tried " + " | ".join(errors))
+
+
+_browser_status: dict = {}
+
+
+def browser_ready(refresh: bool = False) -> tuple[bool, str]:
+    """Which browser can drive the UI tests here? Checked in a separate process (safe inside Streamlit on Windows)."""
+    if _browser_status and not refresh:
+        return _browser_status["ok"], _browser_status["msg"]
+    code = ("import os, sys\n"
+            "from playwright.sync_api import sync_playwright\n"
+            "forced = os.getenv('PLAYWRIGHT_CHANNEL', '').strip()\n"
+            f"choices = [forced] if forced else {BROWSER_CHOICES!r}\n"
+            "p = sync_playwright().start()\n"
+            "for ch in choices:\n"
+            "    try:\n"
+            "        b = p.chromium.launch(**({} if ch == 'chromium' else {'channel': ch})); b.close()\n"
+            "        print('OK', ch); break\n"
+            "    except Exception as e:\n"
+            "        print('FAIL', ch, str(e).splitlines()[0][:160])\n"
+            "p.stop()\n")
+    try:
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+        lines = r.stdout.strip().splitlines()
+        ok_line = next((ln for ln in lines if ln.startswith("OK ")), None)
+        if ok_line:
+            ok, msg = True, f"ready ({BROWSER_NAMES.get(ok_line.split()[1], ok_line.split()[1])})"
+        else:
+            ok, msg = False, "; ".join(lines) or (r.stderr.strip().splitlines() or ["unknown error"])[-1]
+    except subprocess.TimeoutExpired:
+        ok, msg = False, "the browser did not start within 120 s"
+    _browser_status.update(ok=ok, msg=msg)
+    return ok, msg
+
+
+BROWSER_FIX = "python -m playwright install chromium   (or install Microsoft Edge / Google Chrome)"

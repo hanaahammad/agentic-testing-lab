@@ -17,7 +17,7 @@ from agent.config import DEFAULT_MODEL, TARGETS, default_url, load_stories
 from agent.explorer import explore
 from agent.issues import make_tracker, sync_issues
 from agent.llm import make_llm
-from agent.target import endpoint_table, ensure_local_app, fetch_openapi, health
+from agent.target import BROWSER_FIX, browser_ready, endpoint_table, ensure_local_app, fetch_openapi, health
 
 st.set_page_config(page_title="Agentic Testing Lab", page_icon="🧪", layout="wide")
 
@@ -68,6 +68,13 @@ with st.sidebar:
         st.markdown(" · ".join(links))
         if T["kind"] == "web":
             st.caption("Sign in as **amira** / **Nile@2026**")
+            ok, msg = browser_ready()
+            if ok:
+                st.caption(f"UI tests: {msg}")
+            else:
+                st.warning("**No browser for UI tests.** The lab uses Playwright's Chromium, or else the Microsoft "
+                           "Edge / Google Chrome installed on this PC. Install one of them, or run "
+                           "`python -m playwright install chromium`, then restart Streamlit.")
     else:
         st.error(f"Cannot reach {base_url}")
 

@@ -50,3 +50,19 @@ def sign_in(page, username="amira", password="Nile@2026"):
     page.get_by_test_id("login-username").fill(username)
     page.get_by_test_id("login-password").fill(password)
     page.get_by_test_id("login-submit").click()
+
+
+def launch_browser(pw, headless=True):
+    """Launch Chromium for UI tests. Uses Playwright's own Chromium if installed; otherwise falls back to the
+    Microsoft Edge or Google Chrome already installed on the machine (no download needed, e.g. behind a
+    corporate proxy). Force one with PLAYWRIGHT_CHANNEL=msedge | chrome | chromium."""
+    forced = os.getenv("PLAYWRIGHT_CHANNEL", "").strip()
+    tries = [forced] if forced else ["chromium", "msedge", "chrome"]
+    errors = []
+    for channel in tries:
+        try:
+            kw = {} if channel == "chromium" else {"channel": channel}
+            return pw.chromium.launch(headless=headless, **kw)
+        except Exception as e:  # try the next browser
+            errors.append(f"{channel}: {str(e).splitlines()[0][:160]}")
+    raise RuntimeError("No browser for UI tests. Tried " + " | ".join(errors))
