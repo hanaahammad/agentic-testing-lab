@@ -1,0 +1,43 @@
+# Runs every committed, agent-written test on each push and pull request.
+# This is the "CI runs the tests" half of the loop: deterministic and free.
+name: Regression tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: http://127.0.0.1:8000
+      # Repo variable MINIBANK_FIXED=1 simulates "the developer shipped the fix".
+      MINIBANK_FIXED: ${{ vars.MINIBANK_FIXED || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Start MiniBank (application under test)
+        run: |
+          nohup python -m uvicorn app_under_test.minibank:app --host 127.0.0.1 --port 8000 > app.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf $BASE_URL/health && break; sleep 1; done
+
+      - name: Run agent-generated tests
+        run: |
+          mkdir -p reports
+          python -m pytest tests/generated -q --junitxml=reports/junit.xml || code=$?
+          # exit code 5 = no tests collected yet, which is fine for a fresh repo
+          if [ "${code:-0}" -ne 0 ] && [ "${code:-0}" -ne 5 ]; then exit $code; fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-results
+          path: reports/junit.xml
