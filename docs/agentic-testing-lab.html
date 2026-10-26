@@ -1,0 +1,288 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Agentic Testing Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a test-run ledger — one reading column, wide bands for diagrams, IDs set in mono like a real run log. */
+:root {
+  --bg: #f4f5f2; --paper: #ffffff; --ink: #17202a; --muted: #5d6874; --line: #dde1dc;
+  --accent: #0d6b67; --accent-soft: #e2f0ee; --amber: #a86400; --amber-soft: #fbf0dc;
+  --pass: #1f7a4d; --pass-soft: #e5f3eb; --fail: #b3261e; --fail-soft: #fbe9e7;
+  --env: #6a5a8c; --env-soft: #efebf6;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171c; --paper: #1a2128; --ink: #e7ebee; --muted: #9aa6b2; --line: #2c353e;
+  --accent: #5cc3bb; --accent-soft: #163330; --amber: #e5a647; --amber-soft: #352914;
+  --pass: #5ccb8f; --pass-soft: #15301f; --fail: #f08a80; --fail-soft: #3a1c19; --env: #b6a4e0; --env-soft: #29233a;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171c; --paper: #1a2128; --ink: #e7ebee; --muted: #9aa6b2; --line: #2c353e;
+  --accent: #5cc3bb; --accent-soft: #163330; --amber: #e5a647; --amber-soft: #352914;
+  --pass: #5ccb8f; --pass-soft: #15301f; --fail: #f08a80; --fail-soft: #3a1c19; --env: #b6a4e0; --env-soft: #29233a;
+  color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body); margin: 0; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.prose { max-width: 68ch; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.75rem; font-weight: 600; }
+h3 { font-size: 1.15rem; font-weight: 600; }
+p { margin: 0; }
+code, .id { font-family: var(--mono); font-size: 0.86em; }
+a { color: var(--accent); }
+.eyebrow { font: 500 0.78rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+
+header.top { border-bottom: 1px solid var(--line); background: var(--paper); }
+header.top .wrap { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-block: 14px; flex-wrap: wrap; }
+.brand { font: 600 0.95rem var(--display); letter-spacing: 0.02em; }
+.toplinks { display: flex; gap: 18px; font-size: 0.92rem; flex-wrap: wrap; }
+
+.hero { padding-block: 56px 36px; display: grid; gap: 20px; }
+.hero .lead { font-size: 1.2rem; color: var(--muted); max-width: 60ch; }
+.runline { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.chip { font: 500 0.82rem var(--mono); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--paper); }
+.chip.pass { background: var(--pass-soft); color: var(--pass); border-color: transparent; }
+.chip.fail { background: var(--fail-soft); color: var(--fail); border-color: transparent; }
+.chip.env { background: var(--env-soft); color: var(--env); border-color: transparent; }
+
+section { padding-block: 40px; border-top: 1px solid var(--line); }
+section > .wrap { display: grid; gap: 18px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.panel p, .panel li { color: var(--muted); font-size: 0.96rem; }
+.panel ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* the cycle diagram */
+.cycle { overflow-x: auto; }
+.cycle-grid { display: grid; grid-template-columns: repeat(8, minmax(108px, 1fr)); gap: 0; min-width: 900px; position: relative; padding-block: 8px 4px; }
+.stage { position: relative; display: grid; gap: 6px; justify-items: center; text-align: center; padding: 0 6px; }
+.stage .dot { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font: 600 0.8rem var(--mono); background: var(--paper); border: 2px solid var(--accent); color: var(--accent); z-index: 1; }
+.stage.human .dot { border-color: var(--amber); color: var(--amber); background: var(--amber-soft); }
+.stage.ci .dot { border-style: dashed; }
+.stage::before { content: ""; position: absolute; top: 22px; left: -50%; width: 100%; height: 2px; background: var(--line); }
+.stage:first-child::before { display: none; }
+.stage b { font: 600 0.95rem var(--display); }
+.stage span { font-size: 0.8rem; color: var(--muted); line-height: 1.35; }
+.loops { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 0.88rem; color: var(--muted); margin-top: 10px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 6px; border: 2px solid var(--accent); }
+.legend i.h { border-color: var(--amber); background: var(--amber-soft); }
+.legend i.c { border-style: dashed; }
+
+/* triage */
+.triage { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.verdict { border-radius: 10px; padding: 16px; display: grid; gap: 6px; border: 1px solid transparent; }
+.verdict.pb { background: var(--fail-soft); } .verdict.pb b { color: var(--fail); }
+.verdict.tb { background: var(--amber-soft); } .verdict.tb b { color: var(--amber); }
+.verdict.en { background: var(--env-soft); } .verdict.en b { color: var(--env); }
+.verdict b { font: 600 1rem var(--display); }
+.verdict p { font-size: 0.92rem; }
+.verdict .act { font: 500 0.8rem var(--mono); color: var(--muted); }
+
+/* architecture */
+.arch { overflow-x: auto; }
+.arch-grid { display: grid; grid-template-columns: 1fr 56px 1.3fr 56px 1fr; align-items: center; min-width: 760px; gap: 0; }
+.box { border: 1px solid var(--line); background: var(--paper); border-radius: 10px; padding: 14px; display: grid; gap: 4px; }
+.box.agent { border: 2px solid var(--accent); background: var(--accent-soft); }
+.box small { color: var(--muted); font-size: 0.82rem; line-height: 1.4; }
+.box b { font: 600 0.98rem var(--display); }
+.stack { display: grid; gap: 10px; }
+.arrow { height: 2px; background: var(--muted); position: relative; margin: 0 6px; }
+.arrow::after { content: ""; position: absolute; right: -1px; top: -5px; border-left: 9px solid var(--muted); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+.arrow.both::before { content: ""; position: absolute; left: -1px; top: -5px; border-right: 9px solid var(--muted); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+
+/* tables */
+.tablewrap { overflow-x: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 0.78rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); white-space: nowrap; }
+.tag { font: 500 0.75rem var(--mono); padding: 2px 7px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.tag.ui { background: var(--amber-soft); color: var(--amber); }
+
+/* results */
+.results { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.result { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 4px; }
+.result .big { font: 600 2rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.result .big.pass { color: var(--pass); } .result .big.fail { color: var(--fail); }
+.result p { font-size: 0.88rem; color: var(--muted); }
+
+.lesson { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+.lesson .k { font: 600 0.8rem var(--mono); color: var(--accent); padding-top: 3px; }
+.lessons { display: grid; gap: 14px; }
+
+pre.cmd { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font: 0.86rem/1.6 var(--mono); margin: 0; }
+.cta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; background: var(--accent-soft); border-radius: 12px; padding: 22px; }
+.cta p { flex: 1 1 300px; }
+.btn { display: inline-block; background: var(--accent); color: var(--paper); text-decoration: none; font-weight: 600; padding: 11px 18px; border-radius: 8px; }
+.btn:focus-visible, a:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+footer { padding-block: 32px 48px; color: var(--muted); font-size: 0.88rem; border-top: 1px solid var(--line); }
+</style>
+
+<header class="top"><div class="wrap">
+  <div class="brand">Agentic Testing Lab</div>
+  <nav class="toplinks" aria-label="Sections">
+    <a href="#cycle">The cycle</a><a href="#apps">Apps under test</a><a href="#results">Results</a>
+    <a id="discussLinkTop" href="https://claude.ai/artifact/3k4NtrQGvp8QizpdNg7Nnu">Team discussion</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="wrap hero">
+    <div class="eyebrow">Lab report · October 2026 · Hanaa Hammad</div>
+    <h1>An AI agent that does the whole QA cycle, from user story to closed bug</h1>
+    <p class="lead">The testing team asked whether Claude could connect to their tools and automate the full cycle, with the agent doing the testing. This lab is a working answer: two banking apps with hidden bugs, and a QA agent that finds them, files them, and confirms the fixes.</p>
+    <div class="runline" aria-label="Headline results">
+      <span class="chip">43 tests written by the agent</span>
+      <span class="chip fail">11 / 11 seeded bugs found</span>
+      <span class="chip pass">0 false alarms on the fixed builds</span>
+      <span class="chip env">1 test script repaired by the agent itself</span>
+    </div>
+  </div>
+
+  <section id="question"><div class="wrap">
+    <div class="eyebrow">The starting question</div>
+    <h2>"Can the agent access Jira or GitHub, and can it actually do the tests?"</h2>
+    <div class="cols">
+      <div class="panel"><h3>The key design choice</h3>
+        <p>The agent <b>writes</b> the tests and the CI pipeline <b>runs</b> them. Running scripted tests is deterministic, repeatable and free. The agent's intelligence goes before the run (understanding the story, designing cases) and after it (reading failures, deciding what they mean).</p></div>
+      <div class="panel"><h3>Where the agent drives the app itself</h3>
+        <p>In exploratory mode the agent opens a real browser and calls the API one action at a time, deciding what to try next from what it sees. That is how it hunts for new bugs. It is not used for regression, because it never behaves exactly the same way twice.</p></div>
+      <div class="panel"><h3>GitHub instead of Jira, for now</h3>
+        <p>User stories are Markdown files in the repository, bugs are GitHub Issues, and the pipeline is GitHub Actions. The tracker sits behind one small module, so the same agent can file into Jira through its REST API or a Jira connector.</p></div>
+    </div>
+  </div></section>
+
+  <section id="cycle"><div class="wrap">
+    <div class="eyebrow">How it works</div>
+    <h2>The cycle, one story at a time</h2>
+    <p class="prose" style="color:var(--muted)">Each user story goes through the same eight stages. The two amber stages are human checkpoints; the dashed one is where CI takes over.</p>
+    <div class="cycle" role="img" aria-label="Eight stages: read story, discover, design, approve, write scripts, run, triage, file or close issues">
+      <div class="cycle-grid">
+        <div class="stage"><div class="dot">01</div><b>Read story</b><span>Acceptance criteria are the source of truth</span></div>
+        <div class="stage"><div class="dot">02</div><b>Discover</b><span>Reads the API spec and walks every screen as a test user</span></div>
+        <div class="stage"><div class="dot">03</div><b>Design</b><span>Test cases per criterion: positive, negative, boundary, security</span></div>
+        <div class="stage human"><div class="dot">04</div><b>Approve</b><span>A tester ticks which cases to automate</span></div>
+        <div class="stage"><div class="dot">05</div><b>Write scripts</b><span>Playwright UI tests plus API tests, in pytest</span></div>
+        <div class="stage ci"><div class="dot">06</div><b>Run</b><span>On every push in GitHub Actions</span></div>
+        <div class="stage"><div class="dot">07</div><b>Triage</b><span>Each failure classified (see below)</span></div>
+        <div class="stage human"><div class="dot">08</div><b>Issues</b><span>Files new bugs, closes fixed ones; scripts arrive as a pull request</span></div>
+      </div>
+    </div>
+    <div class="loops legend">
+      <span><i></i>Agent step</span><span><i class="h"></i>Human checkpoint</span><span><i class="c"></i>CI pipeline</span>
+      <span>↻ A test bug sends the agent back to stage 05 to repair its own script</span>
+      <span>↻ A developer fix triggers stage 06 again, and passing tests close their issues</span>
+    </div>
+  </div></section>
+
+  <section id="triage"><div class="wrap">
+    <div class="eyebrow">Stage 07 in detail</div>
+    <h2>A red test does not always mean the app is broken</h2>
+    <p class="prose" style="color:var(--muted)">Triage is where most of the value is. For every failure the agent decides which of three things happened, and each verdict leads to a different action.</p>
+    <div class="triage">
+      <div class="verdict pb"><b>Product bug</b><p>The app answered, but what it returned or showed contradicts the story.</p><div class="act">→ opens one GitHub Issue, never a duplicate</div></div>
+      <div class="verdict tb"><b>Test bug</b><p>The script itself is wrong, for example it clicks a button id that is not on the screen.</p><div class="act">→ the agent repairs its script and reruns</div></div>
+      <div class="verdict en"><b>Environment</b><p>The app or the browser was not available. Neither the app nor the test is at fault.</p><div class="act">→ reported, no bug filed, no repair</div></div>
+    </div>
+  </div></section>
+
+  <section id="arch"><div class="wrap">
+    <div class="eyebrow">What is in the repository</div>
+    <h2>Architecture</h2>
+    <div class="arch">
+      <div class="arch-grid">
+        <div class="stack">
+          <div class="box"><b>User stories</b><small>Markdown with acceptance criteria, one folder per app</small></div>
+          <div class="box"><b>Streamlit console</b><small>Run each step with approval, or the whole cycle in one click</small></div>
+        </div>
+        <div class="arrow"></div>
+        <div class="box agent"><b>QA agent</b><small>Discover · design · write scripts · run · triage · repair · file issues · explore live<br>Brain: Claude through the API, or a free scripted demo brain</small></div>
+        <div class="arrow both"></div>
+        <div class="stack">
+          <div class="box"><b>Apps under test</b><small>NileBank (web + API) and MiniBank (API), treated as black boxes</small></div>
+          <div class="box"><b>GitHub</b><small>Issues as bug tracker, Actions as CI, pull requests as the review gate</small></div>
+          <div class="box"><b>QA dashboard</b><small>D3Blocks charts from every run, one self-contained file</small></div>
+        </div>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="apps"><div class="wrap">
+    <div class="eyebrow">Applications under test</div>
+    <h2>Two banks, eleven hidden bugs</h2>
+    <div class="cols">
+      <div class="panel"><h3>NileBank</h3>
+        <p>A realistic online-banking web app: sign-in with lockout, accounts overview, own and beneficiary transfers with a daily limit, beneficiaries with IBAN validation, paginated history, sign-out. Real screens, REST API and database. 7 stories, 8 bugs.</p></div>
+      <div class="panel"><h3>MiniBank</h3>
+        <p>A tiny core-banking REST API used as the first, simplest target: open accounts, deposit, withdraw, transfer. 3 stories, 3 bugs.</p></div>
+      <div class="panel"><h3>A buggy build and a fixed build</h3>
+        <p>Each app runs a buggy build by default. One switch starts the build where the developers shipped the fixes, so the full loop can be shown: bug found, issue opened, fix deployed, issue closed.</p></div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Story</th><th>Seeded bug (NileBank)</th><th>Seen in</th><th>Caught by</th></tr></thead>
+        <tbody>
+          <tr><td class="id">STORY-101</td><td>No account lockout after 3 wrong passwords</td><td><span class="tag">API</span></td><td class="id">TC-101-03</td></tr>
+          <tr><td class="id">STORY-102</td><td>"Total balance" counts only the first account (25,000 instead of 125,000 EGP)</td><td><span class="tag ui">UI only</span></td><td class="id">TC-102-03</td></tr>
+          <tr><td class="id">STORY-104</td><td>Daily beneficiary limit checked per transfer, not per day</td><td><span class="tag">API</span> <span class="tag ui">UI</span></td><td class="id">TC-104-02, TC-104-04</td></tr>
+          <tr><td class="id">STORY-105</td><td>IBAN length never checked (<code>EG123</code> accepted)</td><td><span class="tag">API</span></td><td class="id">TC-105-02</td></tr>
+          <tr><td class="id">STORY-105</td><td>Beneficiary nickname rendered as HTML: stored XSS</td><td><span class="tag ui">UI only</span></td><td class="id">TC-105-04</td></tr>
+          <tr><td class="id">STORY-106</td><td>Pagination off by one: each page repeats a transaction</td><td><span class="tag">API</span></td><td class="id">TC-106-02</td></tr>
+          <tr><td class="id">STORY-107</td><td>Sign-out does not end the session on the server</td><td><span class="tag">API only</span></td><td class="id">TC-107-03</td></tr>
+          <tr><td class="id">STORY-103</td><td>No bug, on purpose: an all-green run is a result too</td><td>–</td><td>–</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div></section>
+
+  <section id="results"><div class="wrap">
+    <div class="eyebrow">Verified results</div>
+    <h2>What the runs showed</h2>
+    <div class="results">
+      <div class="result"><div class="big">43</div><p>tests designed and written by the agent: 27 for NileBank (UI and API), 16 for MiniBank</p></div>
+      <div class="result"><div class="big fail">11</div><p>failures on the buggy builds, every one a real seeded bug, none a broken test</p></div>
+      <div class="result"><div class="big pass">43 / 43</div><p>pass on the fixed builds, and the agent closes every issue it opened</p></div>
+      <div class="result"><div class="big pass">8 / 8</div><p>NileBank bugs found by live exploration alone, with zero findings on the fixed build</p></div>
+    </div>
+    <p class="prose" style="color:var(--muted)">These numbers come from the free demo brain, which replays scripted reasoning so the cycle can be shown without an API key. With Claude as the brain, the agent designs and writes the tests for new stories itself.</p>
+  </div></section>
+
+  <section id="lessons"><div class="wrap">
+    <div class="eyebrow">What we learned building it</div>
+    <h2>Lessons for a real rollout</h2>
+    <div class="lessons prose">
+      <div class="lesson"><div class="k">L1</div><p><b>Stable test ids on screens matter more than the agent.</b> Every button and field in NileBank has a <code>data-testid</code>. With them, UI tests survive layout changes, and the agent can map a screen reliably.</p></div>
+      <div class="lesson"><div class="k">L2</div><p><b>Environment problems must not become bug reports.</b> On the office network the browser download failed behind the company proxy. The first version called that a "test bug". It is now classified as an environment problem, and the lab falls back to the Edge already installed.</p></div>
+      <div class="lesson"><div class="k">L3</div><p><b>Exploration finds, scripts keep.</b> Live exploration found all eight NileBank bugs, but only scripted tests in CI prove a fix stays fixed.</p></div>
+      <div class="lesson"><div class="k">L4</div><p><b>Keep humans at two gates.</b> Approving test cases before automation, and reviewing the agent's scripts as a pull request, keep quality high without slowing the loop.</p></div>
+      <div class="lesson"><div class="k">L5</div><p><b>Guardrails for bank clients.</b> Test environment only, synthetic data, least-privilege tokens, and no ad or tracking scripts in reports (the chart library adds one by default; it is switched off).</p></div>
+    </div>
+  </div></section>
+
+  <section id="run"><div class="wrap">
+    <div class="eyebrow">Try it</div>
+    <h2>Run it locally</h2>
+    <pre class="cmd">git clone https://github.com/hanaahammad/agentic-testing-lab.git     (private repository: ask Hanaa for access)
+cd agentic-testing-lab
+python -m venv .venv  &amp;&amp;  .venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run streamlit_app.py</pre>
+    <p class="prose" style="color:var(--muted)">Pick NileBank in the sidebar, choose <span class="id">STORY-104</span> and click <b>Run full cycle</b>. Then switch on <b>Developer fix deployed</b> and run it again to watch the agent close its issues.</p>
+  </div></section>
+
+  <section id="discussion"><div class="wrap">
+    <div class="cta">
+      <p><b>Next: compare notes with the testing team.</b> The team already connects an agent to Jira and uses a skill to turn user stories into test cases. The discussion page puts the two approaches side by side and collects everyone's views.</p>
+      <a class="btn" id="discussLink" href="https://claude.ai/artifact/3k4NtrQGvp8QizpdNg7Nnu">Open the discussion page</a>
+    </div>
+  </div></section>
+</main>
+
+<footer><div class="wrap">Agentic Testing Lab · built with Claude · Hanaa Hammad, Data and AI, WAVZ</div></footer>
+</body></html>

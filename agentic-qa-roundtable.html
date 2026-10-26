@@ -1,0 +1,421 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Agentic QA Roundtable</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: same ledger system as the lab report; comparison tracks as a wide band, then a stack of discussion cards with live tallies. */
+:root {
+  --bg: #f4f5f2; --paper: #ffffff; --ink: #17202a; --muted: #5d6874; --line: #dde1dc;
+  --accent: #0d6b67; --accent-soft: #e2f0ee; --amber: #a86400; --amber-soft: #fbf0dc;
+  --jira: #2f4fa8; --jira-soft: #e6ebf8; --gap: #8a94a0; --gap-soft: #eef0ee;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171c; --paper: #1a2128; --ink: #e7ebee; --muted: #9aa6b2; --line: #2c353e;
+  --accent: #5cc3bb; --accent-soft: #163330; --amber: #e5a647; --amber-soft: #352914;
+  --jira: #9db3f2; --jira-soft: #1c2640; --gap: #6f7a86; --gap-soft: #20272e; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171c; --paper: #1a2128; --ink: #e7ebee; --muted: #9aa6b2; --line: #2c353e;
+  --accent: #5cc3bb; --accent-soft: #163330; --amber: #e5a647; --amber-soft: #352914;
+  --jira: #9db3f2; --jira-soft: #1c2640; --gap: #6f7a86; --gap-soft: #20272e; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body); margin: 0; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(2.1rem, 5vw, 3.2rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.7rem; font-weight: 600; }
+h3 { font-size: 1.12rem; font-weight: 600; }
+p { margin: 0; }
+a { color: var(--accent); }
+code, .id { font-family: var(--mono); font-size: 0.86em; }
+.eyebrow { font: 500 0.78rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.muted { color: var(--muted); }
+header.top { border-bottom: 1px solid var(--line); background: var(--paper); }
+header.top .wrap { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-block: 14px; flex-wrap: wrap; }
+.brand { font: 600 0.95rem var(--display); letter-spacing: 0.02em; }
+.toplinks { display: flex; gap: 18px; font-size: 0.92rem; flex-wrap: wrap; }
+.hero { padding-block: 52px 34px; display: grid; gap: 18px; }
+.hero .lead { font-size: 1.15rem; color: var(--muted); max-width: 62ch; }
+.agenda { display: flex; flex-wrap: wrap; gap: 8px; }
+.agenda span { font: 500 0.82rem var(--mono); padding: 5px 10px; border-radius: 6px; background: var(--paper); border: 1px solid var(--line); }
+section { padding-block: 40px; border-top: 1px solid var(--line); }
+section > .wrap { display: grid; gap: 18px; }
+
+/* coverage tracks */
+.tracks { overflow-x: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.tgrid { display: grid; grid-template-columns: 170px repeat(8, minmax(92px, 1fr)); gap: 8px; min-width: 980px; align-items: stretch; }
+.tgrid .hd { font: 600 0.82rem var(--display); color: var(--muted); text-align: center; padding-bottom: 4px; align-self: end; }
+.tgrid .who { font: 600 0.95rem var(--display); display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.tgrid .who small { font: 400 0.78rem var(--body); color: var(--muted); }
+.cell { border-radius: 8px; padding: 8px; font-size: 0.78rem; line-height: 1.35; text-align: center; display: grid; place-items: center; min-height: 64px; }
+.cell.team { background: var(--jira-soft); color: var(--jira); font-weight: 500; }
+.cell.lab { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.cell.tbd { background: var(--gap-soft); color: var(--gap); border: 1px dashed var(--gap); }
+.cell.both { background: var(--amber-soft); color: var(--amber); font-weight: 500; }
+.keyrow { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.86rem; color: var(--muted); margin-top: 12px; }
+.keyrow i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.panel ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; color: var(--muted); font-size: 0.95rem; }
+.panel.team { border-top: 4px solid var(--jira); border-radius: 0 0 10px 10px; }
+.panel.lab { border-top: 4px solid var(--accent); border-radius: 0 0 10px 10px; }
+
+/* combined flow */
+.flow { overflow-x: auto; }
+.flow-row { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 0; min-width: 860px; }
+.fstep { position: relative; padding: 14px 12px; margin-right: 18px; border-radius: 10px; display: grid; gap: 4px; align-content: start; }
+.fstep::after { content: ""; position: absolute; right: -15px; top: 50%; border-left: 10px solid var(--muted); border-top: 7px solid transparent; border-bottom: 7px solid transparent; transform: translateY(-50%); }
+.fstep:last-child { margin-right: 0; } .fstep:last-child::after { display: none; }
+.fstep.team { background: var(--jira-soft); } .fstep.team b { color: var(--jira); }
+.fstep.lab { background: var(--accent-soft); } .fstep.lab b { color: var(--accent); }
+.fstep.human { background: var(--amber-soft); } .fstep.human b { color: var(--amber); }
+.fstep b { font: 600 0.95rem var(--display); }
+.fstep span { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+.fstep .who { font: 500 0.7rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+/* discussion */
+.status { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; font-size: 0.92rem; }
+.status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gap); display: inline-block; margin-right: 8px; }
+.status.live .dot { background: var(--accent); }
+.people { display: flex; flex-wrap: wrap; gap: 6px; }
+.person { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); }
+.person img { width: 20px; height: 20px; border-radius: 50%; }
+.topics { display: grid; gap: 16px; }
+.topic { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; }
+.topic-head { display: grid; gap: 4px; }
+.topic-head .num { font: 500 0.76rem var(--mono); color: var(--accent); letter-spacing: 0.06em; }
+.topic-head p { color: var(--muted); font-size: 0.95rem; max-width: 72ch; }
+.options { display: grid; gap: 8px; }
+.opt { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; text-align: left; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; cursor: pointer; position: relative; overflow: hidden; }
+.opt:hover:not([disabled]) { border-color: var(--accent); }
+.opt[aria-pressed="true"] { border: 2px solid var(--accent); padding: 9px 11px; }
+.opt[disabled] { cursor: default; }
+.opt .lbl { font-size: 0.95rem; position: relative; z-index: 1; }
+.opt .cnt { font: 500 0.85rem var(--mono); color: var(--muted); position: relative; z-index: 1; font-variant-numeric: tabular-nums; }
+.opt .bar { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); width: 0; transition: width .35s ease; }
+.opt .voters { grid-column: 1 / -1; font-size: 0.78rem; color: var(--muted); position: relative; z-index: 1; min-height: 0; }
+.opt .voters:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .opt .bar { transition: none; } }
+.note-wrap { display: grid; gap: 6px; }
+.note-wrap label { font: 600 0.8rem var(--mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+textarea { width: 100%; min-height: 72px; resize: vertical; font: 0.95rem/1.5 var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; }
+textarea:focus, .opt:focus-visible, .btn:focus-visible, a:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+textarea[disabled] { opacity: 0.6; }
+.saved { font: 0.78rem var(--mono); color: var(--muted); min-height: 1em; }
+.notes { display: grid; gap: 8px; }
+.notes:empty::before { content: "No notes yet."; color: var(--muted); font-size: 0.88rem; }
+.note { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; padding: 10px 12px; border-radius: 9px; background: var(--bg); }
+.note img { width: 26px; height: 26px; border-radius: 50%; }
+.note b { font-size: 0.85rem; display: block; }
+.note p { font-size: 0.93rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note.mine { outline: 1px dashed var(--accent); }
+.cta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; background: var(--accent-soft); border-radius: 12px; padding: 22px; }
+.cta p { flex: 1 1 300px; }
+.btn { display: inline-block; background: var(--accent); color: var(--paper); text-decoration: none; font-weight: 600; padding: 11px 18px; border-radius: 8px; }
+footer { padding-block: 32px 48px; color: var(--muted); font-size: 0.88rem; border-top: 1px solid var(--line); }
+</style>
+
+<header class="top"><div class="wrap">
+  <div class="brand">Agentic QA Roundtable</div>
+  <nav class="toplinks" aria-label="Sections">
+    <a href="#compare">Two approaches</a><a href="#proposal">Combined proposal</a><a href="#discuss">Discussion</a>
+    <a id="labLinkTop" href="https://claude.ai/artifact/8MYoJryNpL2iVH8AJn7Eq6">Lab report</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="wrap hero">
+    <div class="eyebrow">Testing team × Data and AI · working session</div>
+    <h1>Two ways to put an AI agent into testing, and how they fit together</h1>
+    <p class="lead">The testing team connects an agent to Jira and uses a skill that turns user stories into test cases. The Data and AI lab built an agent that writes, runs and triages the tests and files the bugs. This page lines them up, proposes a combined workflow, and collects everyone's view on the open decisions.</p>
+    <div class="agenda" aria-label="Agenda">
+      <span>1 · Team demo: Jira connector + skill</span><span>2 · Lab demo: full cycle on NileBank</span><span>3 · Compare coverage</span><span>4 · Decide the pilot</span>
+    </div>
+  </div>
+
+  <section id="compare"><div class="wrap">
+    <div class="eyebrow">Side by side</div>
+    <h2>Which stages each approach covers</h2>
+    <p class="muted" style="max-width:70ch">Grey dashed cells are what we should confirm together in the session, based on the team's demo.</p>
+    <div class="tracks">
+      <div class="tgrid" role="table" aria-label="Coverage of the QA lifecycle by each approach">
+        <div></div>
+        <div class="hd">Read story</div><div class="hd">Design cases</div><div class="hd">Approve</div><div class="hd">Write scripts</div>
+        <div class="hd">Run</div><div class="hd">Triage failures</div><div class="hd">File bugs</div><div class="hd">Confirm fix</div>
+
+        <div class="who">Testing team<small>agent + Jira connector + skill</small></div>
+        <div class="cell team">From Jira, through the connector</div>
+        <div class="cell team">The skill turns stories into test cases</div>
+        <div class="cell tbd">In Jira? to confirm</div>
+        <div class="cell tbd">to confirm</div>
+        <div class="cell tbd">to confirm</div>
+        <div class="cell tbd">to confirm</div>
+        <div class="cell tbd">Into Jira? to confirm</div>
+        <div class="cell tbd">to confirm</div>
+
+        <div class="who">Data and AI lab<small>QA agent on GitHub</small></div>
+        <div class="cell lab">Markdown stories in the repo</div>
+        <div class="cell lab">Cases per criterion, UI and API</div>
+        <div class="cell both">Tester ticks cases in the console</div>
+        <div class="cell lab">Playwright + API tests (pytest)</div>
+        <div class="cell lab">CI on every push; live browser exploration</div>
+        <div class="cell lab">Product bug, test bug or environment</div>
+        <div class="cell lab">GitHub Issues, no duplicates</div>
+        <div class="cell lab">Re-run closes the issue</div>
+      </div>
+      <div class="keyrow">
+        <span><i style="background:var(--jira-soft);border:1px solid var(--jira)"></i>Testing team today</span>
+        <span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Lab today</span>
+        <span><i style="background:var(--amber-soft);border:1px solid var(--amber)"></i>Human checkpoint</span>
+        <span><i style="background:var(--gap-soft);border:1px dashed var(--gap)"></i>To confirm in the session</span>
+      </div>
+    </div>
+    <div class="cols">
+      <div class="panel team"><h3>Strengths of the team's approach</h3>
+        <ul>
+          <li>Works where the team already works: stories and test cases stay in Jira.</li>
+          <li>The skill encodes the team's own way of writing test cases, so results are consistent.</li>
+          <li>Fast to adopt: no new repository or pipeline needed to start.</li>
+        </ul></div>
+      <div class="panel lab"><h3>Strengths of the lab's approach</h3>
+        <ul>
+          <li>Goes past design: scripts are written, run in CI and kept as a regression suite.</li>
+          <li>Triage separates real bugs from broken tests and environment problems before anything is filed.</li>
+          <li>Closes the loop: a fix is confirmed by a re-run, and the issue closes itself.</li>
+        </ul></div>
+    </div>
+  </div></section>
+
+  <section id="proposal"><div class="wrap">
+    <div class="eyebrow">A proposal to discuss</div>
+    <h2>Keep Jira and the skill at the front, add the lab's engine behind them</h2>
+    <div class="flow" role="img" aria-label="Combined flow: Jira story, skill designs test cases, tester approves in Jira, agent writes scripts, CI runs and agent triages, bug filed in Jira and closed when fixed">
+      <div class="flow-row">
+        <div class="fstep team"><span class="who">Jira</span><b>User story</b><span>Acceptance criteria written by the product owner</span></div>
+        <div class="fstep team"><span class="who">Team skill</span><b>Test cases</b><span>Generated through the Jira connector, saved on the story</span></div>
+        <div class="fstep human"><span class="who">Tester</span><b>Approve</b><span>Accept, edit or drop each case in Jira</span></div>
+        <div class="fstep lab"><span class="who">Lab agent</span><b>Write scripts</b><span>UI and API tests from the approved cases, as a pull request</span></div>
+        <div class="fstep lab"><span class="who">CI + agent</span><b>Run and triage</b><span>Every build; real bugs separated from noise</span></div>
+        <div class="fstep team"><span class="who">Jira</span><b>Bug, then close</b><span>Filed on the story, closed when the re-run passes</span></div>
+      </div>
+    </div>
+    <p class="muted" style="max-width:72ch">The only change to the lab is its tracker module: it would read approved cases from Jira and file bugs into Jira, through the same connector the team already uses, instead of GitHub Issues.</p>
+  </div></section>
+
+  <section id="discuss"><div class="wrap">
+    <div class="eyebrow">Open decisions</div>
+    <h2>Your view</h2>
+    <p class="muted" style="max-width:70ch">Pick an option and add a note on each topic. Everyone sees the results live; you can change your answer at any time, and only you can change yours.</p>
+    <div class="status" id="status"><span><span class="dot"></span><span id="statusText">Connecting to the shared answers…</span></span><div class="people" id="people"></div></div>
+    <div class="topics" id="topics"></div>
+  </div></section>
+
+  <section><div class="wrap">
+    <div class="cta">
+      <p><b>New to the lab?</b> The lab report explains the cycle, the triage, the two banking apps under test and the verified results.</p>
+      <a class="btn" id="labLink" href="https://claude.ai/artifact/8MYoJryNpL2iVH8AJn7Eq6">Open the lab report</a>
+    </div>
+  </div></section>
+</main>
+<footer><div class="wrap">Agentic QA Roundtable · prepared by Hanaa Hammad, Data and AI, WAVZ, with the testing team</div></footer>
+
+<script>
+(function () {
+  const TOPICS = [
+    { id: "setup", title: "Your setup today",
+      prompt: "Which Jira connector and which model do you use? What does the skill take in, and what does it produce (format, fields, where the test cases are saved)?", options: null },
+    { id: "where", title: "Where should approved test cases live?",
+      prompt: "Jira is where testers work; code in a repository is what CI can run.",
+      options: ["In Jira (test issues, Xray or Zephyr)", "In the repository, as code", "Both, kept in sync by the agent"] },
+    { id: "runs", title: "Who should run the tests?",
+      prompt: "Scripted runs are repeatable and cheap; an agent driving the app finds new bugs but never behaves the same twice.",
+      options: ["The CI pipeline runs the scripts", "The agent drives the app itself", "Both: CI for regression, the agent for exploration"] },
+    { id: "gates", title: "Which human checkpoints do we keep?",
+      prompt: "More checkpoints mean more control and a slower loop.",
+      options: ["Approve test cases only", "Approve test cases and review bugs before filing", "Review every step"] },
+    { id: "bugs", title: "Should the agent file bugs in Jira by itself?",
+      prompt: "The lab files one issue per failing test, never a duplicate, and closes it when the test passes again.",
+      options: ["Yes, automatically", "As drafts that a tester confirms", "No, testers file bugs"] },
+    { id: "pilot", title: "What should the pilot cover?",
+      prompt: "Small enough to finish in a few weeks, real enough to judge.",
+      options: ["One project, 3 to 5 stories", "One full sprint", "An existing regression pack"] },
+    { id: "guard", title: "Guardrails and data",
+      prompt: "Test environments, synthetic data, credentials, what must never leave the bank's network.", options: null },
+    { id: "measure", title: "How do we measure success?",
+      prompt: "For example: share of generated cases accepted unchanged, triage accuracy, hours saved per sprint.", options: null },
+  ];
+
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const topicsEl = $("#topics"), statusEl = $("#status"), statusText = $("#statusText"), peopleEl = $("#people");
+  let db = null, user = null, myId = null, canWrite = false;
+  let responses = {};                     // uid -> { answers: {topicId: {choice, note}} }
+  let mine = { answers: {} };             // my working copy
+  let writing = Promise.resolve();        // one write at a time
+  const noteTimers = {};
+
+  // ---------- static shell (built once, never rebuilt, so typing is never interrupted) ----------
+  TOPICS.forEach((t, i) => {
+    const card = document.createElement("article");
+    card.className = "topic"; card.id = "topic-" + t.id;
+    const head = document.createElement("div"); head.className = "topic-head";
+    head.innerHTML = '<div class="num"></div><h3></h3><p></p>';
+    head.querySelector(".num").textContent = "Topic " + (i + 1) + " of " + TOPICS.length;
+    head.querySelector("h3").textContent = t.title;
+    head.querySelector("p").textContent = t.prompt;
+    card.appendChild(head);
+    if (t.options) {
+      const opts = document.createElement("div"); opts.className = "options"; opts.setAttribute("role", "group");
+      opts.setAttribute("aria-label", t.title);
+      t.options.forEach((label, k) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "opt"; b.id = "opt-" + t.id + "-" + k; b.disabled = true;
+        b.setAttribute("aria-pressed", "false");
+        b.innerHTML = '<span class="bar"></span><span class="lbl"></span><span class="cnt">0</span><span class="voters"></span>';
+        b.querySelector(".lbl").textContent = label;
+        b.addEventListener("click", () => choose(t.id, label));
+        opts.appendChild(b);
+      });
+      card.appendChild(opts);
+    }
+    const nw = document.createElement("div"); nw.className = "note-wrap";
+    const lab = document.createElement("label"); lab.htmlFor = "note-" + t.id; lab.textContent = "Your note";
+    const ta = document.createElement("textarea"); ta.id = "note-" + t.id; ta.disabled = true;
+    ta.placeholder = t.options ? "Why? Any condition or concern?" : "Write your answer…";
+    const saved = document.createElement("div"); saved.className = "saved"; saved.id = "saved-" + t.id;
+    ta.addEventListener("input", () => { saved.textContent = "Typing…"; clearTimeout(noteTimers[t.id]);
+      noteTimers[t.id] = setTimeout(() => saveNote(t.id, ta.value), 900); });
+    ta.addEventListener("blur", () => { if (noteTimers[t.id]) { clearTimeout(noteTimers[t.id]); saveNote(t.id, ta.value); } });
+    nw.append(lab, ta, saved);
+    card.appendChild(nw);
+    const notes = document.createElement("div"); notes.className = "notes"; notes.id = "notes-" + t.id;
+    notes.setAttribute("aria-live", "polite");
+    card.appendChild(notes);
+    topicsEl.appendChild(card);
+  });
+
+  function setStatus(text, live) { statusText.textContent = text; statusEl.classList.toggle("live", !!live); }
+
+  // ---------- writes ----------
+  function persist(topicId) {
+    if (!db || !myId || !canWrite) return;
+    const body = { answers: JSON.parse(JSON.stringify(mine.answers)), updatedAt: new Date().toISOString() };
+    writing = writing.then(() => db.doc("responses/" + myId).set(body)).then(() => {
+      if (topicId) $("#saved-" + topicId).textContent = "Saved";
+    }).catch((e) => {
+      if (e && (e.code === "invalid_argument" || e.code === "not_granted")) {
+        canWrite = false; lockInputs();
+        setStatus("You can read the answers, but this view cannot save yours.", true);
+      } else if (topicId) { $("#saved-" + topicId).textContent = "Not saved, try again"; }
+    });
+  }
+  function choose(topicId, label) {
+    if (!canWrite) return;
+    const a = mine.answers[topicId] || { choice: null, note: "" };
+    a.choice = a.choice === label ? null : label;   // click again to clear
+    mine.answers[topicId] = a;
+    responses[myId] = { answers: JSON.parse(JSON.stringify(mine.answers)) };
+    render();
+    persist(topicId);
+  }
+  function saveNote(topicId, text) {
+    delete noteTimers[topicId];
+    const a = mine.answers[topicId] || { choice: null, note: "" };
+    if ((a.note || "") === text) { $("#saved-" + topicId).textContent = ""; return; }
+    a.note = text.slice(0, 2000);
+    mine.answers[topicId] = a;
+    responses[myId] = { answers: JSON.parse(JSON.stringify(mine.answers)) };
+    render();
+    persist(topicId);
+  }
+  function lockInputs() { document.querySelectorAll(".opt, textarea").forEach((el) => { el.disabled = true; }); }
+  function unlockInputs() { document.querySelectorAll(".opt, textarea").forEach((el) => { el.disabled = false; }); }
+
+  // ---------- render (results only; never touches the textareas) ----------
+  let renderSeq = 0;
+  async function render() {
+    const seq = ++renderSeq;
+    const ids = Object.keys(responses);
+    let ps = {};
+    if (user && ids.length) { try { ps = await user.profiles(ids); } catch (_) { ps = {}; } }
+    if (seq !== renderSeq) return;
+    const who = (id) => (ps[id] && ps[id].name) || (id === myId ? "You" : "A colleague");
+    const avatar = (id) => (ps[id] && ps[id].avatarUrl) || "";
+
+    peopleEl.replaceChildren();
+    ids.filter((id) => Object.keys(responses[id].answers || {}).length).forEach((id) => {
+      const s = document.createElement("span"); s.className = "person";
+      const im = document.createElement("img"); im.alt = ""; if (avatar(id)) im.src = avatar(id);
+      const n = document.createElement("span"); n.textContent = who(id) + (id === myId ? " (you)" : "");
+      s.append(im, n); peopleEl.appendChild(s);
+    });
+
+    TOPICS.forEach((t) => {
+      if (t.options) {
+        const voters = {}; t.options.forEach((o) => { voters[o] = []; });
+        ids.forEach((id) => { const c = responses[id].answers?.[t.id]?.choice; if (c && voters[c]) voters[c].push(id); });
+        const total = Object.values(voters).reduce((n, v) => n + v.length, 0);
+        t.options.forEach((o, k) => {
+          const b = $("#opt-" + t.id + "-" + k);
+          const n = voters[o].length;
+          b.querySelector(".cnt").textContent = n + (total ? " · " + Math.round((100 * n) / total) + "%" : "");
+          b.querySelector(".bar").style.width = total ? (100 * n) / total + "%" : "0";
+          b.querySelector(".voters").textContent = voters[o].map(who).join(", ");
+          b.setAttribute("aria-pressed", String(mine.answers[t.id]?.choice === o));
+        });
+      }
+      const box = $("#notes-" + t.id); box.replaceChildren();
+      ids.forEach((id) => {
+        const note = (responses[id].answers?.[t.id]?.note || "").trim();
+        if (!note) return;
+        const row = document.createElement("div"); row.className = "note" + (id === myId ? " mine" : "");
+        const im = document.createElement("img"); im.alt = ""; if (avatar(id)) im.src = avatar(id);
+        const body = document.createElement("div");
+        const b = document.createElement("b"); b.textContent = who(id) + (id === myId ? " (you)" : "");
+        const choice = responses[id].answers?.[t.id]?.choice;
+        if (choice) b.textContent += " · chose “" + choice + "”";
+        const p = document.createElement("p"); p.textContent = note;
+        body.append(b, p); row.append(im, body); box.appendChild(row);
+      });
+    });
+  }
+
+  // ---------- start ----------
+  async function start() {
+    if (!window.claude || !window.claude.use) {
+      setStatus("Open this page in Claude to see and share answers.", false); return;
+    }
+    [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (!db) { setStatus("Sign in to Claude with access to this page to see and share answers.", false); return; }
+    myId = user ? await user.id() : null;
+    const can = user ? await user.can("data.write") : null;
+    canWrite = !!myId && can !== false;
+    db.collection("responses").onSnapshot((snap) => {
+      const next = {};
+      snap.docs.forEach((d) => { if (d.exists) next[d.id] = d.data(); });
+      responses = next;
+      const mineDoc = next[myId];
+      if (mineDoc && mineDoc.answers) {
+        // adopt my stored answers, but never overwrite a note I am typing right now
+        Object.entries(mineDoc.answers).forEach(([tid, a]) => {
+          const ta = document.getElementById("note-" + tid);
+          if (ta && document.activeElement !== ta && !noteTimers[tid]) { ta.value = a.note || ""; }
+          if (!noteTimers[tid]) mine.answers[tid] = { choice: a.choice ?? null, note: a.note || "" };
+        });
+      }
+      const count = Object.keys(next).length;
+      setStatus((count ? count + (count === 1 ? " person has" : " people have") + " answered · live"
+                       : "No answers yet. Be the first: pick an option below.")
+                + (canWrite ? "" : " · read only: this view cannot save answers"), true);
+      if (canWrite) unlockInputs();
+      render();
+    }, () => setStatus("The shared answers are unavailable right now. Reload the page to try again.", false));
+    if (!canWrite) setStatus("You can read the answers, but this view cannot save yours.", true);
+  }
+  start();
+})();
+</script>
+</body></html>
