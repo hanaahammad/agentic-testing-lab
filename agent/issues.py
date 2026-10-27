@@ -98,7 +98,10 @@ class GitHubTracker:
 
 def issue_body(v: dict, story: dict) -> str:
     steps = "\n".join(f"{n}. {s}" for n, s in enumerate(v.get("steps") or [], 1)) or "_see test_"
-    return f"""**Found by the QA agent** while testing **{story['id']}: {story['title']}** ({v.get('criterion', '')}).
+    review = (f"> ⚠️ **Needs human review.** This verdict comes from a local model ({v.get('brain', 'Ollama')}). "
+              "Check that the test's expectation matches the story before fixing the app.\n\n"
+              if v.get("needs_review") else "")
+    return review + f"""**Found by the QA agent** while testing **{story['id']}: {story['title']}** ({v.get('criterion', '')}).
 
 **Severity:** {v.get('severity', 'medium')} · **Confidence:** {v.get('confidence', '')}
 

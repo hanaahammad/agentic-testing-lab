@@ -65,6 +65,36 @@ def _surface(ctx: dict) -> str:
 
 
 # ---------- 1. Design ----------
+CASE_TYPES = ("positive", "negative", "boundary", "security")
+
+
+def normalise_cases(data, story: dict, web: bool) -> list[dict]:
+    """Accept what a (small) model returns, fix the shape, renumber ids. Raises ValueError if unusable."""
+    if isinstance(data, dict):
+        data = data.get("test_cases") or data.get("cases") or next((v for v in data.values() if isinstance(v, list)), [])
+    if not isinstance(data, list) or not data:
+        raise ValueError('expected {"test_cases": [ ... ]} with at least one case')
+    num = story["id"].split("-")[1]
+    out = []
+    for i, c in enumerate([c for c in data if isinstance(c, dict)][:10], 1):
+        if not str(c.get("title", "")).strip():
+            raise ValueError(f"test case {i} has no title")
+        steps = c.get("steps") or []
+        iface = str(c.get("interface", "API")).upper()
+        out.append({
+            "id": f"TC-{num}-{i:02d}",
+            "title": str(c["title"]).strip(),
+            "type": c.get("type") if c.get("type") in CASE_TYPES else "positive",
+            "criterion": str(c.get("criterion", "")).strip() or "AC?",
+            "interface": ("UI" if "UI" in iface else "API") if web else "API",
+            "steps": [str(x) for x in steps] if isinstance(steps, list) else [str(steps)],
+            "expected": str(c.get("expected", "")).strip(),
+        })
+    if not out:
+        raise ValueError("no usable test case objects")
+    return out
+
+
 def design_tests(llm, story: dict, ctx: dict) -> list[dict]:
     if llm.demo:
         return demo_nilebank.CASES[story["id"]] if ctx["target"] == "nilebank" else demo_data.cases(story["id"])
@@ -85,12 +115,131 @@ Reply with JSON only:
 {{"test_cases": [{{"id": "TC-{num}-01", "title": "...", "type": "positive|negative|boundary|security",
 "criterion": "AC1", "interface": "{'UI|API' if web else 'API'}", "steps": ["..."], "expected": "..."}}]}}
 Number ids TC-{num}-01, TC-{num}-02, ..."""
-    data = llm.complete_json(QA_SYSTEM, prompt)
-    return data["test_cases"] if isinstance(data, dict) else data
+    last = None
+    for _ in range(3):
+        try:
+            return normalise_cases(llm.complete_json(QA_SYSTEM, prompt), story, web)
+        except (ValueError, KeyError, TypeError) as e:
+            last = e
+            prompt += f"\n\nYour previous answer was rejected: {e}. Reply again with the JSON object only."
+    raise RuntimeError(f"The model could not produce usable test cases: {last}")
 
 
 # ---------- 2. Generate ----------
-def generate_script(llm, story: dict, cases: list[dict], ctx: dict) -> str:
+STYLE_SOURCES = {"nilebank": ("STORY-102", "STORY-101"), "minibank": ("STORY-001", "STORY-002")}
+FIXTURES = {"minibank": {"api"}, "nilebank": {"bank", "amira", "page", "signed_in", "_browser", "_fresh_data"}}
+
+
+def style_example(story: dict, ctx: dict) -> str:
+    """A finished test module for ANOTHER story, so the model sees the house style and the toolkit in use."""
+    first, second = STYLE_SOURCES[ctx["target"]]
+    sid = second if story["id"] == first else first
+    code = demo_nilebank.script(sid) if ctx["target"] == "nilebank" else demo_data.SCRIPTS[sid]
+    return f"Example of a finished module in the house style (for {sid}, a DIFFERENT story; do not copy its cases):\n```python\n{code.strip()}\n```"
+
+
+def test_name_for(case_id: str) -> str:
+    return "test_" + case_id.lower().replace("-", "_")
+
+
+def check_script(code: str, cases: list[dict], ctx: dict) -> list[str]:
+    """Static checks before anything runs. Returns the problems, empty if the module looks right."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return [f"SyntaxError line {e.lineno}: {e.msg}"]
+    funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+    names = [f.name for f in funcs]
+    problems = []
+    for c in cases:
+        prefix = test_name_for(c["id"])
+        hits = [n for n in names if n == prefix or n.startswith(prefix + "_")]
+        if not hits:
+            problems.append(f"missing a test function for {c['id']} (name must start with {prefix}_)")
+        elif len(hits) > 1:
+            problems.append(f"{c['id']} has {len(hits)} test functions, write exactly one")
+    for f in funcs:
+        if f.name in FIXTURES[ctx["target"]] or any(
+                "fixture" in ast.unparse(d) for d in f.decorator_list):
+            problems.append(f"do not define fixtures (found `{f.name}`); they already exist in conftest.py")
+    problems += hardcoded_balances(funcs)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and "conftest" in (node.module or ""):
+            problems.append("do not import from conftest; fixtures are injected by pytest through the test arguments")
+    if ctx.get("ui_map"):
+        known = set(re.findall(r"data-testid=([\w-]+)", ctx["ui_map"]))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "get_by_test_id" and node.args
+                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+                    and node.args[0].value not in known):
+                problems.append(f"data-testid '{node.args[0].value}' is not in the screen map; use only listed ids")
+    return sorted(set(problems))
+
+
+def _num(node):
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        v = _num(node.operand)
+        return -v if v is not None else None
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+        return node.value
+    return None
+
+
+def hardcoded_balances(funcs) -> list[str]:
+    """Small models compute expected balances in their head and get them wrong (50 + 50 = 150).
+    In a test that creates its own accounts, a balance may be compared to a literal only if it is one of the
+    starting amounts (unchanged); anything else must be written as arithmetic on the setup values."""
+    problems = []
+    for f in funcs:
+        starts = set()
+        for n in ast.walk(f):
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "create_account":
+                args = list(n.args[1:2]) + [k.value for k in n.keywords if k.arg == "initial_deposit"]
+                starts |= {v for v in map(_num, args) if v is not None}
+        if not starts:
+            continue
+        for n in ast.walk(f):
+            if not (isinstance(n, ast.Compare) and len(n.ops) == 1 and isinstance(n.ops[0], ast.Eq)):
+                continue
+            left, right = n.left, n.comparators[0]
+            for call, lit in ((left, right), (right, left)):
+                v = _num(lit)
+                if (isinstance(call, ast.Call) and getattr(call.func, "attr", "") == "balance"
+                        and v is not None and v not in starts):
+                    problems.append(f"{f.name}: balance compared to the hard-coded number {v}; keep the starting "
+                                    "balances and the amount in variables and assert the arithmetic "
+                                    "(e.g. start_b + amount)")
+    return problems
+
+
+def collect_errors(path: Path) -> str:
+    """Ask pytest to import the module without running it (catches bad imports, unknown helpers)."""
+    proc = subprocess.run([sys.executable, "-m", "pytest", str(path), "--collect-only", "-q", "--no-header"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=120)
+    if proc.returncode in (0, 5):
+        return ""
+    return (proc.stdout + proc.stderr)[-1500:]
+
+
+def _write_until_valid(llm, story, cases, ctx, prompt, log, attempts=3) -> str:
+    code = ""
+    for i in range(attempts):
+        code = llm.complete_code(QA_SYSTEM, prompt)
+        problems = check_script(code, cases, ctx)
+        if not problems:
+            path = save_script(story, code)
+            err = collect_errors(path)
+            if not err:
+                return code
+            problems = [f"pytest could not import the module:\n{err}"]
+        log(f"[{story['id']}] Script check failed (attempt {i + 1}): " + "; ".join(p.splitlines()[0] for p in problems))
+        prompt += ("\n\nYour previous module was rejected by the checks:\n- " + "\n- ".join(problems)
+                   + f"\n\nPrevious module:\n```python\n{code}\n```\nReply with the corrected FULL module in a ```python block.")
+    log(f"[{story['id']}] Keeping the last version; the run and triage will show what is wrong.")
+    return code
+
+
+def generate_script(llm, story: dict, cases: list[dict], ctx: dict, log=print) -> str:
     if llm.demo:
         return demo_nilebank.script(story["id"]) if ctx["target"] == "nilebank" else demo_data.SCRIPTS[story["id"]]
     prompt = f"""User story:
@@ -100,6 +249,8 @@ def generate_script(llm, story: dict, cases: list[dict], ctx: dict) -> str:
 
 {HELPERS[ctx['target']]}
 
+{style_example(story, ctx)}
+
 Approved test cases (JSON):
 {json.dumps(cases, indent=2)}
 
@@ -108,12 +259,14 @@ Rules:
 - One test function per case, named test_<id in lowercase with dashes as underscores>_<short_slug>,
   e.g. TC-003-02 -> def test_tc_003_02_transfer_above_balance_refused(...):
 - First line of each test is a docstring with the case id.
-- Use only the fixtures and helpers listed above.
+- Use only the fixtures and helpers listed above. Do not define fixtures.
 - Assert status codes AND resulting state (balances, what is shown) as the story requires; put useful context
   in assert messages.
 - Assert the story's intended behaviour even if you suspect the app is wrong.
+- Never hard-code a computed expectation: keep the setup values in variables and assert the arithmetic,
+  e.g. start_b = 50; amount = 50; ... assert api.balance(b["id"]) == start_b + amount
 Reply with the python module in a ```python block."""
-    return llm.complete_code(QA_SYSTEM, prompt)
+    return _write_until_valid(llm, story, cases, ctx, prompt, log)
 
 
 def script_path(story: dict) -> Path:
@@ -176,15 +329,35 @@ def extract_function(code: str, name: str) -> str:
     return ""
 
 
+VERDICTS = ("product_bug", "test_bug", "environment")
+SEVERITIES = ("critical", "high", "medium", "low")
+# Failures that rules can classify with certainty: the model is not asked about these.
+RULE_TEST_BUG = ("SyntaxError", "IndentationError", "ImportError", "ModuleNotFoundError", "NameError",
+                 "fixture '")
+
+
+def rule_verdict(f: dict, cases: list[dict]):
+    text = f"{f.get('message', '')}\n{f.get('details', '')}"
+    if any(k in text for k in demo_data.ENVIRONMENT_MARKERS) or (
+            f["status"] == "error" and any(k in text for k in RULE_TEST_BUG)):
+        v = demo_data.heuristic_triage(f, cases)
+        v["reasoning"] += " (classified by rule)"
+        return v
+    return None
+
+
 def triage(llm, story: dict, cases: list[dict], code: str, run: dict, ctx: dict) -> list[dict]:
     fails = failures(run)
     if not fails:
         return []
     if llm.demo:
         return [demo_data.heuristic_triage(f, cases) for f in fails]
-    items = [{"tc_id": f["tc_id"], "test_name": f["name"], "test_source": extract_function(code, f["name"]),
-              "failure": (f["message"] + "\n" + f["details"])[-2500:]} for f in fails]
-    prompt = f"""User story:
+    decided = {f["name"]: rule_verdict(f, cases) for f in fails}
+    ask = [f for f in fails if decided[f["name"]] is None]
+    if ask:
+        items = [{"tc_id": f["tc_id"], "test_name": f["name"], "test_source": extract_function(code, f["name"]),
+                  "failure": (f["message"] + "\n" + f["details"])[-2500:]} for f in ask]
+        prompt = f"""User story:
 {story['text']}
 
 {_surface(ctx)}
@@ -201,17 +374,47 @@ For EACH failed test decide:
   map, a wrong expectation vs the story).
 - "environment": the app or browser was unreachable or the infrastructure failed.
 
+Before choosing "product_bug", recompute the expected value yourself from the test's own setup and the story
+(e.g. starting balance + transferred amount). If the test expected a wrong number, or expects something the
+story does not say, the TEST is wrong: choose "test_bug". Only blame the app when the test's expectation is
+exactly what the story requires.
+
 Reply with JSON only:
 {{"verdicts": [{{"tc_id": "...", "test_name": "...", "verdict": "product_bug|test_bug|environment",
 "confidence": 0.0-1.0, "severity": "critical|high|medium|low", "criterion": "AC?",
 "title": "short bug title", "steps": ["..."], "expected": "...", "actual": "...",
 "reasoning": "one or two sentences"}}]}}"""
-    data = llm.complete_json(QA_SYSTEM, prompt)
-    return data["verdicts"] if isinstance(data, dict) else data
+        try:
+            data = llm.complete_json(QA_SYSTEM, prompt)
+            got = data.get("verdicts", []) if isinstance(data, dict) else data
+        except (ValueError, RuntimeError):
+            got = []
+        by_name = {v.get("test_name"): v for v in got if isinstance(v, dict)}
+        by_id = {v.get("tc_id"): v for v in got if isinstance(v, dict)}
+        for f in ask:
+            v = by_name.get(f["name"]) or by_id.get(f["tc_id"])
+            fallback = demo_data.heuristic_triage(f, cases)
+            if not v or v.get("verdict") not in VERDICTS:
+                fallback["reasoning"] += " (the model gave no usable verdict; classified by rule)"
+                decided[f["name"]] = fallback
+                continue
+            merged = {**fallback, **{k: v[k] for k in v if v[k] not in (None, "", [])}}
+            merged.update(tc_id=f["tc_id"], test_name=f["name"])
+            if merged.get("severity") not in SEVERITIES:
+                merged["severity"] = fallback["severity"]
+            try:
+                merged["confidence"] = float(merged.get("confidence", 0.6))
+            except (TypeError, ValueError):
+                merged["confidence"] = 0.6
+            if merged["verdict"] == "product_bug" and getattr(llm, "kind", "") == "ollama":
+                merged["needs_review"] = True   # small local models are weaker judges: a person confirms
+                merged["brain"] = llm.label
+            decided[f["name"]] = merged
+    return [decided[f["name"]] for f in fails]
 
 
 # ---------- 5. Repair (self-healing for test bugs) ----------
-def repair_script(llm, story: dict, code: str, verdicts: list[dict], run: dict, ctx: dict) -> str:
+def repair_script(llm, story: dict, code: str, verdicts: list[dict], run: dict, ctx: dict, cases=None, log=print) -> str:
     if llm.demo:
         if ctx["target"] == "nilebank":
             return demo_nilebank.repaired(story["id"], code)
@@ -235,11 +438,11 @@ These tests were diagnosed as TEST bugs (the test is wrong, not the app):
 
 Fix ONLY those tests so they correctly check the story. Do not weaken assertions that check the
 story's rules, and leave every other test exactly as it is. Reply with the full module in a ```python block."""
-    return llm.complete_code(QA_SYSTEM, prompt)
+    return _write_until_valid(llm, story, cases or [], ctx, prompt, log, attempts=2)
 
 
 # ---------- The full cycle ----------
-def full_cycle(llm, story: dict, base_url: str, tracker=None, approve=None, log=print, max_repairs: int = 1) -> dict:
+def full_cycle(llm, story: dict, base_url: str, tracker=None, approve=None, log=print, max_repairs: int = 2) -> dict:
     """Runs the whole loop. `approve(cases) -> cases` is the human gate; None = auto-approve."""
     key = story.get("target", "minibank")
     sid = story["id"]
@@ -252,6 +455,7 @@ def full_cycle(llm, story: dict, base_url: str, tracker=None, approve=None, log=
             log(f"[{sid}] ⚠️ The browser for UI tests is not available on this machine ({msg}). "
                 f"UI tests will be reported as environment problems, API tests still run. Fix: {BROWSER_FIX}")
 
+    log(f"[{sid}] Brain: {getattr(llm, 'label', 'demo')}")
     log(f"[{sid}] Designing test cases from the acceptance criteria")
     cases = design_tests(llm, story, ctx)
     if approve:
@@ -259,7 +463,7 @@ def full_cycle(llm, story: dict, base_url: str, tracker=None, approve=None, log=
     log(f"[{sid}] {len(cases)} test cases approved")
 
     log(f"[{sid}] Writing the pytest script" + (" (Playwright UI + API)" if ctx["ui_map"] else ""))
-    code = generate_script(llm, story, cases, ctx)
+    code = generate_script(llm, story, cases, ctx, log)
     path = save_script(story, code)
 
     log(f"[{sid}] Running tests against the app")
@@ -271,14 +475,15 @@ def full_cycle(llm, story: dict, base_url: str, tracker=None, approve=None, log=
     while any(v["verdict"] == "test_bug" for v in verdicts) and repairs < max_repairs:
         repairs += 1
         log(f"[{sid}] Triage found a bug in my own test script. Repairing it (attempt {repairs})")
-        code = repair_script(llm, story, code, verdicts, run, ctx)
+        code = repair_script(llm, story, code, verdicts, run, ctx, cases, log)
         path = save_script(story, code)
         run = run_tests(path, base_url, key)
         log(f"[{sid}] Re-run result: {run['summary']}")
         verdicts = triage(llm, story, cases, code, run, ctx)
 
     for v in verdicts:
-        log(f"[{sid}] {v.get('tc_id')}: {v['verdict']} - {v.get('title', '')}")
+        log(f"[{sid}] {v.get('tc_id')}: {v['verdict']} - {v.get('title', '')}"
+            + ("  (needs human review)" if v.get("needs_review") else ""))
 
     actions = []
     if tracker is not None:
@@ -288,7 +493,7 @@ def full_cycle(llm, story: dict, base_url: str, tracker=None, approve=None, log=
         for a in actions:
             log(f"[{sid}] Issue {a['action']}: #{a['issue']['number']} {a['issue']['title']}")
 
-    result = {"story": sid, "target": key, "cases": cases, "script": str(path), "run": run,
+    result = {"story": sid, "target": key, "brain": getattr(llm, "label", "demo"), "cases": cases, "script": str(path), "run": run,
               "verdicts": verdicts, "repairs": repairs, "actions": actions}
     write_report(story, result)
     record_history(story, result, base_url)
@@ -333,6 +538,7 @@ def record_history(story: dict, result: dict, base_url: str) -> None:
         "app": key, "story": story["id"], "title": story["title"],
         "build": (health(base_url, key) or {}).get("build", "unknown"),
         "repairs": result["repairs"],
+        "brain": result.get("brain", "demo"),
         "summary": result["run"]["summary"],
         "cases": [{"tc_id": c["tc_id"], "status": c["status"],
                    "verdict": verdict_by.get(c["tc_id"], ""),

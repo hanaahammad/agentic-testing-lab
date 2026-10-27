@@ -3,6 +3,7 @@
   python -m agent.cli cycle --app nilebank --story ALL --demo --start-app
   python -m agent.cli cycle --app minibank --story STORY-003 --tracker github   (needs ANTHROPIC_API_KEY, GITHUB_TOKEN)
   python -m agent.cli explore --app nilebank --story STORY-105 --demo --start-app
+  python -m agent.cli cycle --app nilebank --story STORY-101 --brain ollama --model qwen2.5-coder:7b
   python -m agent.cli stories --app nilebank
 """
 import argparse
@@ -22,8 +23,11 @@ def main(argv=None):
     p.add_argument("command", choices=["cycle", "explore", "stories"])
     p.add_argument("--app", choices=list(TARGETS), default=DEFAULT_TARGET, help="Application under test")
     p.add_argument("--story", default="ALL", help="STORY-xxx or ALL")
-    p.add_argument("--demo", action="store_true", help="Use the scripted brain (no API key needed)")
-    p.add_argument("--model", default="")
+    p.add_argument("--demo", action="store_true", help="Same as --brain demo")
+    p.add_argument("--brain", choices=["demo", "claude", "ollama"], default="",
+                   help="demo (scripted), claude (ANTHROPIC_API_KEY) or ollama (local models)")
+    p.add_argument("--model", default="", help="Claude model id, or Ollama model name e.g. qwen2.5-coder:7b")
+    p.add_argument("--ollama-url", default=os.getenv("OLLAMA_URL", "http://localhost:11434"))
     p.add_argument("--base-url", default="", help="URL of an already running app (default: its local port)")
     p.add_argument("--start-app", action="store_true", help="Start the app locally first")
     p.add_argument("--fixed", action="store_true", help="With --start-app: run the fixed build")
@@ -44,7 +48,10 @@ def main(argv=None):
         return 2
     print(f"Testing {t['name']} at {base_url} (build: {h.get('build')})")
 
-    llm = make_llm(a.demo, os.getenv("ANTHROPIC_API_KEY", ""), a.model)
+    brain = a.brain or ("demo" if a.demo else ("claude" if os.getenv("ANTHROPIC_API_KEY") else "demo"))
+    model = a.model or (os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b") if brain == "ollama" else "")
+    llm = make_llm(brain=brain, api_key=os.getenv("ANTHROPIC_API_KEY", ""), model=model, ollama_url=a.ollama_url)
+    print(f"Agent brain: {getattr(llm, 'label', brain)}")
     stories = load_stories(a.app) if a.story.upper() == "ALL" else [get_story(a.story, a.app)]
 
     if a.command == "explore":

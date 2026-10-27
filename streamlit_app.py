@@ -16,7 +16,7 @@ from agent import pipeline
 from agent.config import DEFAULT_MODEL, TARGETS, default_url, load_stories
 from agent.explorer import explore
 from agent.issues import make_tracker, sync_issues
-from agent.llm import make_llm
+from agent.llm import make_llm, ollama_models
 from agent.target import BROWSER_FIX, browser_ready, endpoint_table, ensure_local_app, fetch_openapi, health
 
 st.set_page_config(page_title="Agentic Testing Lab", page_icon="🧪", layout="wide")
@@ -79,12 +79,29 @@ with st.sidebar:
         st.error(f"Cannot reach {base_url}")
 
     st.subheader("Agent brain")
-    brain = st.radio("Agent brain", ["Demo (no API key)", "Claude API"], label_visibility="collapsed",
-                     help="Demo replays scripted reasoning so you can see the whole cycle for free.")
-    api_key, model = "", DEFAULT_MODEL
+    brain = st.radio("Agent brain", ["Demo (no API key)", "Ollama (local)", "Claude API"],
+                     label_visibility="collapsed",
+                     help="Demo replays scripted reasoning. Ollama runs a real model on this PC (nothing leaves "
+                          "the machine). Claude API is the strongest brain and needs an API key.")
+    api_key, model, ollama_url = "", DEFAULT_MODEL, secret("OLLAMA_URL", "http://localhost:11434")
     if brain == "Claude API":
         api_key = st.text_input("Anthropic API key", value=secret("ANTHROPIC_API_KEY"), type="password")
         model = st.text_input("Model", value=secret("CLAUDE_MODEL", DEFAULT_MODEL))
+    elif brain == "Ollama (local)":
+        ollama_url = st.text_input("Ollama URL", value=ollama_url)
+        names, why = ollama_models(ollama_url)
+        if names:
+            chat = [n for n in names if not any(k in n for k in ("embed", "bge", "llava"))] or names
+            pref = next((n for n in ("qwen2.5-coder:7b", "qwen2.5:7b-instruct", "llama3.1:8b") if n in chat), chat[0])
+            model = st.selectbox("Model", chat, index=chat.index(secret("OLLAMA_MODEL", pref))
+                                 if secret("OLLAMA_MODEL", pref) in chat else chat.index(pref),
+                                 help="Best here: qwen2.5-coder:7b (writes the tests). The model must support tools "
+                                      "for Explore live: qwen2.5 and llama3.1 do; deepseek-r1 and llava don't.")
+            st.caption("A 7-8B model on a laptop CPU takes a few minutes per story. Results are real, "
+                       "but expect more script repairs than with Claude.")
+        else:
+            st.error(why)
+            model = ""
 
     st.subheader("Bug tracker")
     tracker_kind = st.radio("Issues go to", ["Local file", "GitHub Issues"], label_visibility="collapsed")
@@ -96,7 +113,8 @@ with st.sidebar:
 
 def get_llm():
     try:
-        return make_llm(brain.startswith("Demo"), api_key, model)
+        kind = {"Demo (no API key)": "demo", "Ollama (local)": "ollama", "Claude API": "claude"}[brain]
+        return make_llm(brain=kind, api_key=api_key, model=model, ollama_url=ollama_url)
     except Exception as e:
         st.error(f"Agent brain not ready: {e}")
         st.stop()
@@ -162,6 +180,9 @@ def show_verdicts(verdicts):
                         f"severity *{v.get('severity', '?')}* · confidence {v.get('confidence', '?')}")
             st.markdown(f"**{v.get('title', '')}**")
             st.caption(v.get("reasoning", ""))
+            if v.get("needs_review"):
+                st.warning("Needs human review: verdict from a local model. Check the test's expected value "
+                           "against the story before treating this as an app bug.")
             st.markdown(f"Expected: {v.get('expected', '')}  \nActual: `{v.get('actual', '')}`")
 
 
@@ -280,7 +301,7 @@ with tabs[4]:
             if any(v["verdict"] == "test_bug" for v in ss.verdicts) and c1.button("🔧 Let the agent repair its script and re-run"):
                 with st.spinner("Repairing and re-running..."):
                     llm = get_llm()
-                    ss.code = pipeline.repair_script(llm, story, ss.code, ss.verdicts, ss.run, get_ctx())
+                    ss.code = pipeline.repair_script(llm, story, ss.code, ss.verdicts, ss.run, get_ctx(), ss.approved or ss.cases or [])
                     pipeline.save_script(story, ss.code)
                     ss.run = pipeline.run_tests(pipeline.script_path(story), base_url, app)
                     ss.verdicts = pipeline.triage(llm, story, ss.approved or ss.cases or [], ss.code, ss.run, get_ctx())
@@ -302,7 +323,7 @@ with tabs[5]:
     else:
         st.markdown("Here the agent **tests the app itself**: no script, it sends HTTP requests one at a time, "
                     "reads each response, decides what to try next, and records findings.")
-    st.caption("With the Claude brain this is a real tool-use loop; the demo brain replays a scripted session.")
+    st.caption("With Claude or Ollama this is a real tool-use loop; the demo brain replays a scripted session.")
     budget = st.slider("Action budget", 5, 40, 15)
     show_shots = T["kind"] == "web" and st.toggle("Show screenshots", value=True)
     if st.button("Start exploratory session", type="primary"):

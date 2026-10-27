@@ -9,7 +9,7 @@ A hands-on lab where an AI agent does the QA job end to end:
 It also has an **exploratory mode**, where the agent tests the live app itself, driving a real browser and the API
 one action at a time, deciding what to try next from what it sees.
 
-No Jira, no testing background needed. Runs free in **demo mode** (no API key), or with **Claude** as the brain.
+No Jira, no testing background needed. Runs free in **demo mode** (scripted), with a **local model through Ollama** (real, private, free), or with **Claude** (strongest).
 
 ## Two applications under test
 
@@ -137,6 +137,33 @@ python -m agent.cli cycle   --app minibank --story ALL --demo --start-app
 ```
 
 Watch the UI tests run in a visible browser: set `HEADED=1` before running `pytest tests/nilebank`.
+
+### Use a local model (Ollama) as the brain
+
+Real reasoning, nothing leaves your PC, no API key.
+
+```bat
+ollama pull qwen2.5-coder:7b          :: once; best local choice for writing tests
+streamlit run streamlit_app.py        :: sidebar → Agent brain → Ollama (local) → pick the model
+```
+
+or from the command line:
+
+```bat
+python -m agent.cli cycle --app minibank --story STORY-003 --brain ollama --model qwen2.5-coder:7b --start-app
+```
+
+| Model | Writes tests | Explore live (tools) |
+|---|---|---|
+| qwen2.5-coder:7b | best local choice | yes |
+| qwen2.5:7b-instruct, llama3.1:8b | OK | yes |
+| deepseek-r1, llava, embedding models | not suitable | no |
+
+Guardrails make small models usable: test cases are validated and renumbered; every generated script is checked
+(syntax, exactly one test per approved case, no redefined fixtures, only data-testids from the screen map, pytest
+can import it) and sent back to the model with the exact error, up to 3 tries; environment and Python-error failures
+are classified by rules, and any verdict the model gets wrong falls back to the rules. Expect a few minutes per story
+on a laptop CPU, and more script repairs than with Claude. Ollama elsewhere on the network: set `OLLAMA_URL`.
 
 ### Use Claude as the brain
 

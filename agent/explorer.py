@@ -166,13 +166,14 @@ def explore(llm, story: dict, spec: dict, base_url: str, budget: int = 15, emit=
             if key == "nilebank":
                 return _demo_scripted(story, base_url, budget, push, findings, events, browser)
             return _demo_explore(story, base_url, budget, push, findings, events)
-        return _claude_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key)
+        return _model_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key)
     finally:
         if browser:
             browser.close()
 
 
-def _claude_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key):
+def _model_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key):
+    """Any real brain (Claude or Ollama) drives the tools through the same tool-session interface."""
     surface = f"API:\n{compact_spec(spec)}"
     if browser:
         surface += f"\n\nScreens (data-testids) discovered by crawling the app:\n{discover_ui(base_url, key)}"
@@ -180,37 +181,45 @@ def _claude_explore(llm, story, spec, base_url, budget, push, findings, events, 
         surface += f"\n\nTest user: {user} / {pw}"
     tools = [HTTP_TOOL] + (BROWSER_TOOLS if browser else []) + [FINDING_TOOL]
     system = SYSTEM.format(budget=budget, browser_note=" (an HTTP client and a real web browser)" if browser else "")
-    messages = [{"role": "user", "content": f"User story:\n{story['text']}\n\n{surface}\n\nStart testing."}]
-    used = 0
+    session = llm.tool_session(system, tools, f"User story:\n{story['text']}\n\n{surface}\n\nStart testing.")
+    used, nudged = 0, False
     for _ in range(budget * 2 + 4):
-        resp = llm.client.messages.create(model=llm.model, max_tokens=2000, system=system, tools=tools,
-                                          messages=messages)
-        messages.append({"role": "assistant", "content": resp.content})
-        for b in resp.content:
-            if b.type == "text" and b.text.strip():
-                push({"type": "thought", "text": b.text.strip()})
-        if resp.stop_reason != "tool_use":
+        texts, calls = session.step()
+        for t in texts:
+            push({"type": "thought", "text": t})
+        if not calls:
+            if used == 0 and not nudged:   # small local models sometimes describe instead of acting
+                nudged = True
+                session.messages.append({"role": "user", "content": "Do not describe the plan: call the tools now, "
+                                         "one action at a time, and record_finding for each deviation."})
+                continue
             break
         results = []
-        for b in resp.content:
-            if b.type != "tool_use":
-                continue
-            if b.name == "record_finding":
-                findings.append(dict(b.input))
-                push({"type": "finding", **b.input})
-                out = {"recorded": True}
-            elif used >= budget:
-                out = {"error": "Action budget exhausted. Write your final summary now."}
-            elif b.name == "http_request":
-                used += 1
-                out = _http(base_url, b.input["method"], b.input["path"], b.input.get("json_body"), b.input.get("headers"))
-                push(_req_event(b.input["method"], b.input["path"], b.input.get("json_body"), out))
-            else:
-                used += 1
-                out = browser.act(b.name, b.input) if b.name != "browser_read" else browser._state()
-                push(_browser_event(b.name, b.input, out, browser.shot()))
-            results.append({"type": "tool_result", "tool_use_id": b.id, "content": json.dumps(out)[:6000]})
-        messages.append({"role": "user", "content": results})
+        for c in calls:
+            name, args = c["name"], c["input"] or {}
+            try:
+                if name == "record_finding":
+                    f = {k: args.get(k, "") for k in ("title", "criterion", "severity", "evidence")}
+                    findings.append(f)
+                    push({"type": "finding", **f})
+                    out = {"recorded": True}
+                elif used >= budget:
+                    out = {"error": "BUDGET EXHAUSTED: this action was NOT sent to the app (this is not an app response). Record findings only for responses you actually saw, then write your final summary."}
+                elif name == "http_request":
+                    used += 1
+                    out = _http(base_url, args.get("method", "GET"), args.get("path", "/"), args.get("json_body"),
+                                args.get("headers"))
+                    push(_req_event(args.get("method", "GET"), args.get("path", "/"), args.get("json_body"), out))
+                elif browser and name in {t["name"] for t in BROWSER_TOOLS}:
+                    used += 1
+                    out = browser.act(name, args) if name != "browser_read" else browser._state()
+                    push(_browser_event(name, args, out, browser.shot()))
+                else:
+                    out = {"error": f"Unknown tool {name}. Available: {[t['name'] for t in tools]}"}
+            except Exception as e:  # a bad argument must not end the session: tell the model and continue
+                out = {"error": f"{type(e).__name__}: {e}"[:500]}
+            results.append((c, out))
+        session.answer(results)
     return {"events": events, "findings": findings, "requests_used": used}
 
 
