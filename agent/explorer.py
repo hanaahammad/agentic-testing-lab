@@ -166,10 +166,23 @@ def explore(llm, story: dict, spec: dict, base_url: str, budget: int = 15, emit=
             if key == "nilebank":
                 return _demo_scripted(story, base_url, budget, push, findings, events, browser)
             return _demo_explore(story, base_url, budget, push, findings, events)
-        return _model_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key)
+        res = _model_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key)
+        return res
     finally:
         if browser:
             browser.close()
+
+
+def explore_and_save(llm, story: dict, spec: dict, base_url: str, budget: int = 15, emit=lambda e: None) -> dict:
+    """explore(), then freeze the session (transcript, findings, screenshots) as a new artifact version."""
+    from . import artifacts
+    from .target import health
+
+    res = explore(llm, story, spec, base_url, budget, emit)
+    key = story.get("target", "minibank")
+    res["artifact"] = artifacts.record_exploration(story, res, (health(base_url, key) or {}).get("build", "unknown"),
+                                                   getattr(llm, "label", "demo"))
+    return res
 
 
 def _model_explore(llm, story, spec, base_url, budget, push, findings, events, browser, key):

@@ -55,12 +55,13 @@ def main(argv=None):
     stories = load_stories(a.app) if a.story.upper() == "ALL" else [get_story(a.story, a.app)]
 
     if a.command == "explore":
-        from .explorer import explore
+        from .explorer import explore_and_save
 
         spec = fetch_openapi(base_url, a.app)
         for s in stories:
-            res = explore(llm, s, spec, base_url, a.budget, emit=lambda e: print(_fmt(e)))
+            res = explore_and_save(llm, s, spec, base_url, a.budget, emit=lambda e: print(_fmt(e)))
             print(json.dumps(res["findings"], indent=2))
+            print(f"Session saved as artifacts/{a.app}/{s['id']}/{res['artifact']['version']}")
         return 0
 
     tracker = None

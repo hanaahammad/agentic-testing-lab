@@ -75,6 +75,28 @@ flowchart LR
 
 ---
 
+## The console (Streamlit pages)
+
+| Section | Page | What you do there |
+|---|---|---|
+| Start | 🏠 Welcome | A cartoon of how to use the agent, step by step, with links to each page |
+| Test activities | 📖 Stories | See every story, its criteria and its latest saved result |
+| | 1 · Design → 2 · Scripts → 3 · Run → 4 · Triage & issues | The cycle step by step, with you approving the test cases |
+| | ⚡ Full cycle | All steps in one click (auto-approval) |
+| | 🤖 Explore live | The agent drives the browser / API with no script |
+| Results | 📋 Issues | Bugs the agent opened and closed |
+| | 📦 Artifacts | Every run as a version: browse, compare two versions, download, commit to git |
+| | 📊 Dashboard | D3Blocks charts over the run history |
+
+## Artifacts: every run kept and versioned
+
+Each cycle or exploration is saved as a new numbered folder, never overwritten
+(`artifacts/<app>/<STORY>/v003/`, `explore-v002/`) with the story as tested, approved cases, script, JUnit XML,
+results, triage, issues, report and screenshots, plus a `manifest.json` recording the build tested, the brain,
+the lab's git commit, the parent version and a sha256 fingerprint of every file (the Artifacts page re-checks
+them). The CLI and CI save artifacts too. To keep the history on GitHub, click **Commit artifacts to git** on the
+Artifacts page (it commits only `artifacts/`), then `git push`.
+
 ## The cycle
 
 ```mermaid
@@ -160,8 +182,8 @@ python -m agent.cli cycle --app minibank --story STORY-003 --brain ollama --mode
 | deepseek-r1, llava, embedding models | not suitable | no |
 
 Guardrails make small models usable: test cases are validated and renumbered; every generated script is checked
-(syntax, exactly one test per approved case, no redefined fixtures, only data-testids from the screen map, pytest
-can import it) and sent back to the model with the exact error, up to 3 tries; environment and Python-error failures
+(syntax, exactly one test per approved case, no redefined fixtures or conftest imports, no hard-coded balances,
+pytest can import it; screen ids not seen while crawling are flagged as a note) and sent back to the model with the exact error, up to 3 tries; environment and Python-error failures
 are classified by rules, and any verdict the model gets wrong falls back to the rules. Expect a few minutes per story
 on a laptop CPU, and more script repairs than with Claude. Ollama elsewhere on the network: set `OLLAMA_URL`.
 

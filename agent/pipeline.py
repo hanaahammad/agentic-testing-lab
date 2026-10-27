@@ -166,13 +166,6 @@ def check_script(code: str, cases: list[dict], ctx: dict) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and "conftest" in (node.module or ""):
             problems.append("do not import from conftest; fixtures are injected by pytest through the test arguments")
-    if ctx.get("ui_map"):
-        known = set(re.findall(r"data-testid=([\w-]+)", ctx["ui_map"]))
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "get_by_test_id" and node.args
-                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
-                    and node.args[0].value not in known):
-                problems.append(f"data-testid '{node.args[0].value}' is not in the screen map; use only listed ids")
     return sorted(set(problems))
 
 
@@ -210,6 +203,23 @@ def hardcoded_balances(funcs) -> list[str]:
                                     "balances and the amount in variables and assert the arithmetic "
                                     "(e.g. start_b + amount)")
     return problems
+
+
+def unknown_test_ids(code: str, ctx: dict) -> list[str]:
+    """data-testids used by the script but not seen while crawling. Advisory only: messages that appear after an
+    action (an error after a wrong password, a success banner) are not on the screens the crawler sees. A truly
+    wrong id makes the test time out, triage calls it a test bug and the agent repairs it."""
+    if not ctx.get("ui_map"):
+        return []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    known = set(re.findall(r"data-testid=([\w-]+)", ctx["ui_map"]))
+    return sorted({n.args[0].value for n in ast.walk(tree)
+                   if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "get_by_test_id" and n.args
+                   and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str)
+                   and n.args[0].value not in known})
 
 
 def collect_errors(path: Path) -> str:
@@ -493,11 +503,28 @@ def full_cycle(llm, story: dict, base_url: str, tracker=None, approve=None, log=
         for a in actions:
             log(f"[{sid}] Issue {a['action']}: #{a['issue']['number']} {a['issue']['title']}")
 
-    result = {"story": sid, "target": key, "brain": getattr(llm, "label", "demo"), "cases": cases, "script": str(path), "run": run,
-              "verdicts": verdicts, "repairs": repairs, "actions": actions}
-    write_report(story, result)
+    result = {"story": sid, "target": key, "brain": getattr(llm, "label", "demo"), "cases": cases, "script": str(path),
+              "code": code, "run": run, "verdicts": verdicts, "repairs": repairs, "actions": actions}
+    report = write_report(story, result)
     record_history(story, result, base_url)
+    result["artifact"] = save_artifacts(story, result, base_url, report)
+    log(f"[{sid}] Artifacts saved as version {result['artifact']['version']} "
+        f"(artifacts/{key}/{sid}/{result['artifact']['version']})")
     return result
+
+
+def save_artifacts(story: dict, result: dict, base_url: str, report: Path | None = None, stage: str = "complete") -> dict:
+    """Freeze this cycle as a new numbered version in artifacts/ (see agent/artifacts.py)."""
+    from . import artifacts
+    from .target import health
+
+    key = result.get("target") or story.get("target", "minibank")
+    junit = REPORTS_DIR / f"junit_{script_path(story).stem}.xml"
+    md = report.read_text(encoding="utf-8") if report and Path(report).exists() else ""
+    return artifacts.record_cycle(story, {**result, "target": key},
+                                  build=(health(base_url, key) or {}).get("build", "unknown"),
+                                  brain=result.get("brain", "demo"), report_md=md,
+                                  junit=junit if result.get("run") else None, stage=stage)
 
 
 def write_report(story: dict, result: dict) -> Path:
