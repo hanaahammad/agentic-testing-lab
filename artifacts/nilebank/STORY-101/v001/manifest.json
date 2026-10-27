@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "kind": "cycle",
+  "version": "v001",
+  "parent": "",
+  "app": "nilebank",
+  "app_name": "NileBank",
+  "story": "STORY-101",
+  "story_title": "Sign in securely, with lockout after failed attempts",
+  "created": "2026-10-27T14:22:27",
+  "build_tested": "buggy",
+  "brain": "Demo (scripted)",
+  "lab_code": "d492fb5+changes",
+  "stage": "complete",
+  "repairs": 0,
+  "summary": {
+    "passed": 3,
+    "failed": 1,
+    "error": 0,
+    "skipped": 0,
+    "total": 4
+  },
+  "product_bugs": [
+    "TC-101-03"
+  ],
+  "needs_review": false,
+  "files": {
+    "issues.json": "695dbff1c6a11f6e",
+    "junit.xml": "60b31a1088eecc46",
+    "report.md": "aa5412df7af8a990",
+    "results.json": "6c1daf0dd6c26283",
+    "story.md": "55187dc9c47ef068",
+    "test_cases.json": "45cb0afab0adbf85",
+    "test_script.py": "8f0120e4fe3fc0ce",
+    "triage.json": "1ce935842a178565"
+  }
+}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="4" time="2.221" timestamp="2026-10-27T14:22:13.509588+03:00" hostname="Hanaa-Hammad-Len"><testcase classname="tests.nilebank.generated.test_story_101" name="test_tc_101_01_valid_sign_in_shows_accounts_ui" time="1.069" /><testcase classname="tests.nilebank.generated.test_story_101" name="test_tc_101_02_wrong_password_shows_generic_error_ui" time="0.555" /><testcase classname="tests.nilebank.generated.test_story_101" name="test_tc_101_03_account_locks_after_three_failures_api" time="0.129"><failure message="AssertionError: expected 423 locked after 3 failures, got 200: {&quot;token&quot;:&quot;2u1qiYoktzM0p5u9UG6QmK5rDPEX6FLt&quot;}&#10;assert 200 == 423&#10; +  where 200 = &lt;Response [200]&gt;.status_code">bank = &lt;nilebank_helpers.Bank object at 0x000002D9797B2450&gt;
+
+    def test_tc_101_03_account_locks_after_three_failures_api(bank):
+        """TC-101-03 (API)"""
+        for _ in range(3):
+            bank.post("/api/auth/login", json={"username": "amira", "password": "wrong"})
+        r = bank.post("/api/auth/login", json={"username": "amira", "password": "Nile@2026"})
+&gt;       assert r.status_code == 423, f"expected 423 locked after 3 failures, got {r.status_code}: {r.text}"
+E       AssertionError: expected 423 locked after 3 failures, got 200: {"token":"2u1qiYoktzM0p5u9UG6QmK5rDPEX6FLt"}
+E       assert 200 == 423
+E        +  where 200 = &lt;Response [200]&gt;.status_code
+
+tests\nilebank\generated\test_story_101.py:28: AssertionError</failure></testcase><testcase classname="tests.nilebank.generated.test_story_101" name="test_tc_101_04_unknown_user_gets_same_error_api" time="0.357" /></testsuite></testsuites>

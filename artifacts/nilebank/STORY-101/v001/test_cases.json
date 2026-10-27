@@ -1,0 +1,52 @@
+[
+  {
+    "id": "TC-101-01",
+    "title": "Valid sign-in lands on accounts page",
+    "type": "positive",
+    "criterion": "AC1",
+    "interface": "UI",
+    "steps": [
+      "Open /login",
+      "Enter amira / Nile@2026",
+      "Click Sign in"
+    ],
+    "expected": "Accounts page, name 'Amira Hassan' shown"
+  },
+  {
+    "id": "TC-101-02",
+    "title": "Wrong password shows generic error",
+    "type": "negative",
+    "criterion": "AC2",
+    "interface": "UI",
+    "steps": [
+      "Open /login",
+      "Enter amira / wrong password",
+      "Click Sign in"
+    ],
+    "expected": "'Invalid username or password.', stays on /login"
+  },
+  {
+    "id": "TC-101-03",
+    "title": "Account locks after 3 failed attempts",
+    "type": "negative",
+    "criterion": "AC3",
+    "interface": "API",
+    "steps": [
+      "POST /api/auth/login with wrong password ×3",
+      "POST /api/auth/login with correct password"
+    ],
+    "expected": "HTTP 423 locked"
+  },
+  {
+    "id": "TC-101-04",
+    "title": "Unknown user gets the same error as wrong password",
+    "type": "negative",
+    "criterion": "AC4",
+    "interface": "API",
+    "steps": [
+      "Login as unknown user",
+      "Login as omar with wrong password"
+    ],
+    "expected": "Both 401 with identical message"
+  }
+]

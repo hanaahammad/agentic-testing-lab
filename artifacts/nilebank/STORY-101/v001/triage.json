@@ -1,0 +1,18 @@
+[
+  {
+    "tc_id": "TC-101-03",
+    "test_name": "test_tc_101_03_account_locks_after_three_failures_api",
+    "verdict": "product_bug",
+    "confidence": 0.9,
+    "severity": "high",
+    "criterion": "AC3",
+    "title": "Story rule broken: Account locks after 3 failed attempts (AC3)",
+    "steps": [
+      "POST /api/auth/login with wrong password ×3",
+      "POST /api/auth/login with correct password"
+    ],
+    "expected": "HTTP 423 locked",
+    "actual": "AssertionError: expected 423 locked after 3 failures, got 200: {\"token\":\"2u1qiYoktzM0p5u9UG6QmK5rDPEX6FLt\"}",
+    "reasoning": "The app answered, but what it returned or showed contradicts the acceptance criterion: the assertion on the response, amount or screen failed."
+  }
+]

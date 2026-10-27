@@ -1,0 +1,39 @@
+{
+  "summary": {
+    "passed": 3,
+    "failed": 1,
+    "error": 0,
+    "skipped": 0,
+    "total": 4
+  },
+  "cases": [
+    {
+      "name": "test_tc_101_01_valid_sign_in_shows_accounts_ui",
+      "tc_id": "TC-101-01",
+      "status": "passed",
+      "message": "",
+      "details": ""
+    },
+    {
+      "name": "test_tc_101_02_wrong_password_shows_generic_error_ui",
+      "tc_id": "TC-101-02",
+      "status": "passed",
+      "message": "",
+      "details": ""
+    },
+    {
+      "name": "test_tc_101_03_account_locks_after_three_failures_api",
+      "tc_id": "TC-101-03",
+      "status": "failed",
+      "message": "AssertionError: expected 423 locked after 3 failures, got 200: {\"token\":\"2u1qiYoktzM0p5u9UG6QmK5rDPEX6FLt\"}\nassert 200 == 423\n +  where 200 = <Response [200]>.status_code",
+      "details": "bank = <nilebank_helpers.Bank object at 0x000002D9797B2450>\n\n    def test_tc_101_03_account_locks_after_three_failures_api(bank):\n        \"\"\"TC-101-03 (API)\"\"\"\n        for _ in range(3):\n            bank.post(\"/api/auth/login\", json={\"username\": \"amira\", \"password\": \"wrong\"})\n        r = bank.post(\"/api/auth/login\", json={\"username\": \"amira\", \"password\": \"Nile@2026\"})\n>       assert r.status_code == 423, f\"expected 423 locked after 3 failures, got {r.status_code}: {r.text}\"\nE       AssertionError: expected 423 locked after 3 failures, got 200: {\"token\":\"2u1qiYoktzM0p5u9UG6QmK5rDPEX6FLt\"}\nE       assert 200 == 423\nE        +  where 200 = <Response [200]>.status_code\n\ntests\\nilebank\\generated\\test_story_101.py:28: AssertionError"
+    },
+    {
+      "name": "test_tc_101_04_unknown_user_gets_same_error_api",
+      "tc_id": "TC-101-04",
+      "status": "passed",
+      "message": "",
+      "details": ""
+    }
+  ]
+}
